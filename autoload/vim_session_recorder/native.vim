@@ -73,20 +73,20 @@ function! vim_session_recorder#native#IsBinaryFile(filepath)
         return v:false
     endif
 
-    " Read first 8KB to check for binary
-    try
-        let l:chunk = readfile(a:filepath, 'b', 1)
-        if empty(l:chunk)
-            return v:false
-        endif
-        " Check for null bytes
-        if match(l:chunk[0], "\x00") >= 0
-            return v:true
-        endif
+    " Use 'file' command to detect binary files
+    " This is more reliable than reading bytes manually
+    let l:file_output = system('file -b ' . shellescape(a:filepath))
+    if v:shell_error != 0
         return v:false
-    catch
-        return v:false
-    endtry
+    endif
+
+    " Check if file command reports binary/data/ELF
+    " Examples: "ELF 64-bit LSB executable", "ASCII text", "UTF-8 Unicode text", etc.
+    if l:file_output =~? 'binary\|data\|ELF'
+        return v:true
+    endif
+
+    return v:false
 endfunction
 
 " Get file info dict: {exists, size, is_binary}
