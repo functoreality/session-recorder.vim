@@ -2,20 +2,17 @@
 
 " Generate UUID
 function! vim_session_recorder#utils#GenerateUuid()
-    " Use Python to generate UUID
-    return vim_session_recorder#python#GenerateUuid()
+    return vim_session_recorder#native#GenerateUuid()
 endfunction
 
 " Get current timestamp in ISO 8601 format
 function! vim_session_recorder#utils#GetCurrentTimestamp()
-    " Use Python for consistent format
-    return vim_session_recorder#python#GetCurrentTimestamp()
+    return vim_session_recorder#native#GetCurrentTimestamp()
 endfunction
 
 " Get timestamp for directory naming (no special chars)
 function! vim_session_recorder#utils#GetDirnameTimestamp()
-    " Use Python for consistent format
-    return vim_session_recorder#python#GetDirnameTimestamp()
+    return vim_session_recorder#native#GetDirnameTimestamp()
 endfunction
 
 " Safe call wrapper for error handling

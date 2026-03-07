@@ -24,33 +24,33 @@ function! vim_session_recorder#session#StartSession()
     let s:session.start_time = vim_session_recorder#utils#GetCurrentTimestamp()
     let s:session.start_time_str = vim_session_recorder#utils#GetDirnameTimestamp()
     let s:session.record_dir = vim_session_recorder#config#GetRecordDir()
-    
+
     " Reset file tracking
     let s:session.files = []
     let s:session.recorded_paths = {}
     let s:session.file_counter = 0
     let s:session.first_file = ''
-    
+
     " Create session directory via Python
     let l:first_file = ''
-    
-    " Call Python to create session directory
-    let l:session_dir = vim_session_recorder#python#CreateSessionDir(
+
+    " Call native function to create session directory
+    let l:session_dir = vim_session_recorder#native#CreateSessionDir(
         \ s:session.record_dir,
         \ s:session.start_time_str,
         \ l:first_file,
         \ vim_session_recorder#config#GetUuidLength()
     \)
-    
+
     if empty(l:session_dir)
         " Failed to create session directory
         let s:session.session_id = ''
         echom '[vim-session-recorder] Failed to create session directory'
         return
     endif
-    
+
     let s:session.record_dir = l:session_dir
-    
+
     " Register cleanup on exit
     " (Already done via VimLeavePre autocommand)
 endfunction
@@ -59,15 +59,15 @@ endfunction
 function! vim_session_recorder#session#UpdateFirstFile(filepath)
     if empty(s:session.first_file) && !empty(a:filepath)
         let s:session.first_file = a:filepath
-        
+
         " Rename session directory with first file name
-        let l:new_dir = vim_session_recorder#python#RenameSessionDir(
+        let l:new_dir = vim_session_recorder#native#RenameSessionDir(
             \ s:session.record_dir,
             \ s:session.start_time_str,
             \ a:filepath,
             \ vim_session_recorder#config#GetUuidLength()
         \)
-        
+
         if !empty(l:new_dir)
             let s:session.record_dir = l:new_dir
         endif
@@ -105,29 +105,29 @@ endfunction
 function! vim_session_recorder#session#EndSession()
     " Record end time
     let l:end_time = vim_session_recorder#utils#GetCurrentTimestamp()
-    
+
     " Process each file - generate diffs
     let l:processed_files = []
-    
+
     for l:file_record in s:session.files
         let l:processed = vim_session_recorder#recorder#ProcessFileOnExit(
             \ l:file_record,
             \ s:session.record_dir)
         call add(l:processed_files, l:processed)
     endfor
-    
+
     " Write record.yaml
     let l:session_data = {
         \ 'vim_start': s:session.start_time,
         \ 'vim_close': l:end_time,
         \ 'opened_files': l:processed_files,
     \}
-    
-    call vim_session_recorder#python#WriteRecordYaml(
+
+    call vim_session_recorder#native#WriteRecordJson(
         \ s:session.record_dir,
         \ l:session_data
     \)
-    
+
     " Clear session
     let s:session.session_id = ''
 endfunction
