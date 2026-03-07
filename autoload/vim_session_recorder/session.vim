@@ -94,6 +94,9 @@ function! vim_session_recorder#session#EndSession()
         let l:processed = vim_session_recorder#recorder#ProcessFileOnExit(
             \ l:file_record,
             \ s:session.record_dir)
+        if has_key(l:processed, 'original_file')
+            unlet l:processed.original_file
+        endif
         call add(l:processed_files, l:processed)
     endfor
 
