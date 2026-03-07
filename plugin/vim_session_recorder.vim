@@ -19,14 +19,12 @@ augroup VimSessionRecorder
     autocmd!
     
     " Session lifecycle
-    autocmd VimEnter * if exists('*vim_session_recorder#main#OnVimEnter') | call vim_session_recorder#main#OnVimEnter() | endif
-    autocmd VimLeavePre * if exists('*vim_session_recorder#main#OnVimLeavePre') | call vim_session_recorder#main#OnVimLeavePre() | endif
+    autocmd VimEnter * call vim_session_recorder#main#OnVimEnter()
+    autocmd VimLeavePre * call vim_session_recorder#main#OnVimLeavePre()
     
-    " File tracking - BufReadPost fires after buffer content is loaded
-    " Use :p modifier to get absolute path (full path) as required by PRD
-    autocmd BufReadPost * if exists('*vim_session_recorder#main#OnBufRead') | call vim_session_recorder#main#OnBufRead(expand('<afile>:p')) | endif
-    autocmd BufNew,BufAdd * if exists('*vim_session_recorder#main#OnBufAdd') | call vim_session_recorder#main#OnBufAdd(expand('<afile>:p')) | endif
+    " File tracking
+    autocmd BufNew * call vim_session_recorder#main#OnBufNew(expand('<afile>:p'))
     
     " Skip recording for certain buffers
-    autocmd FileType netrw,gitcommit,fugitive,qf,vimfiler,nerdtree,startify,packer if exists('*vim_session_recorder#main#SkipBuffer') | call vim_session_recorder#main#SkipBuffer() | endif
+    autocmd FileType netrw,gitcommit,fugitive,qf,vimfiler,nerdtree,startify,packer call vim_session_recorder#main#SkipBuffer()
 augroup END

@@ -18,7 +18,7 @@ function! vim_session_recorder#main#OnVimEnter()
 
     let l:initial_file = expand('%:p')
     if !empty(l:initial_file) && filereadable(l:initial_file)
-        call vim_session_recorder#main#OnBufRead(l:initial_file)
+        call vim_session_recorder#main#OnBufNew(l:initial_file)
     endif
 endfunction
 
@@ -35,8 +35,8 @@ function! vim_session_recorder#main#OnVimLeavePre()
     call vim_session_recorder#session#EndSession()
 endfunction
 
-" Called when a file is read (existing file)
-function! vim_session_recorder#main#OnBufRead(filepath)
+" Called when a new buffer is added
+function! vim_session_recorder#main#OnBufNew(filepath)
     if !vim_session_recorder#config#IsEnabled()
         return
     endif
@@ -45,46 +45,23 @@ function! vim_session_recorder#main#OnBufRead(filepath)
         return
     endif
 
-    if s:ShouldSkipBuffer(a:filepath)
+    let l:filepath = a:filepath
+    if l:filepath =~# '^file://'
+        let l:filepath = substitute(l:filepath, '^file://', '', '')
+    endif
+
+    if s:ShouldSkipBuffer(l:filepath)
         return
     endif
 
-    let l:file_id = vim_session_recorder#recorder#RecordFile(a:filepath)
+    if !filereadable(l:filepath)
+        return
+    endif
+
+    let l:file_id = vim_session_recorder#recorder#RecordFile(l:filepath)
     if l:file_id > 0
-        let s:recorded_files[a:filepath] = l:file_id
+        let s:recorded_files[l:filepath] = l:file_id
     endif
-endfunction
-
-" Called when a new buffer is added (new file)
-function! vim_session_recorder#main#OnBufAdd(filepath)
-    if !vim_session_recorder#config#IsEnabled()
-        return
-    endif
-
-    if !vim_session_recorder#session#HasActiveSession()
-        return
-    endif
-
-    if empty(a:filepath)
-        return
-    endif
-
-    if s:ShouldSkipBuffer(a:filepath)
-        return
-    endif
-
-    if !filereadable(a:filepath)
-        return
-    endif
-
-    let l:file_id = vim_session_recorder#recorder#RecordFile(a:filepath)
-    if l:file_id > 0
-        let s:recorded_files[a:filepath] = l:file_id
-    endif
-endfunction
-
-" Skip certain buffer types
-function! vim_session_recorder#main#SkipBuffer()
 endfunction
 
 " Internal function to check if buffer should be skipped
