@@ -16,7 +16,7 @@ let s:config = {}
 function! vim_session_recorder#config#LoadConfig()
     " Start with defaults
     let s:config = copy(s:default_config)
-    
+
     " Check for user overrides
     if exists('g:vim_session_recorder#config')
         " Merge user config
@@ -24,13 +24,13 @@ function! vim_session_recorder#config#LoadConfig()
             let s:config[l:key] = g:vim_session_recorder#config[l:key]
         endfor
     endif
-    
+
     " Ensure record directory exists
     let l:record_dir = s:config.record_dir
     if !isdirectory(l:record_dir)
         call mkdir(l:record_dir, 'p')
     endif
-    
+
     return s:config
 endfunction
 

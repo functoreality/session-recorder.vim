@@ -79,9 +79,6 @@ function! vim_session_recorder#recorder#ProcessFileOnExit(file_record, session_d
     " Check if we have original file
     if !has_key(l:file_record, 'original_file') || empty(l:file_record.original_file)
         " Large or binary file - no diff
-        let l:file_record.diff_generated = v:false
-        let l:file_record.lines_added = 0
-        let l:file_record.lines_deleted = 0
         return l:file_record
     endif
 
@@ -99,11 +96,8 @@ function! vim_session_recorder#recorder#ProcessFileOnExit(file_record, session_d
     if l:diff_result.success
         let l:file_record.lines_added = l:diff_result.lines_added
         let l:file_record.lines_deleted = l:diff_result.lines_deleted
-        let l:file_record.diff_generated = v:true
     else
         let l:file_record.diff_generated = v:false
-        let l:file_record.lines_added = 0
-        let l:file_record.lines_deleted = 0
     endif
 
     return l:file_record

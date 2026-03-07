@@ -14,8 +14,6 @@ opened_files:
     resolved_path: /full/path/to/soft_link_target.ext
   - id: 3
     opened: 2026-03-06 12:25:00
-    lines_deleted: 0
-    lines_added: 0
     path: /full/path/to/large_file.bin
     size: 5242880
     is_binary: true
