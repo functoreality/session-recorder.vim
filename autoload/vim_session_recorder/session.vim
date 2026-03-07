@@ -20,9 +20,9 @@ endfunction
 " Start a new session
 function! vim_session_recorder#session#StartSession()
     " Generate UUID and timestamp
-    let s:session.session_id = vim_session_recorder#utils#GenerateUuid()
-    let s:session.start_time = vim_session_recorder#utils#GetCurrentTimestamp()
-    let s:session.start_time_str = vim_session_recorder#utils#GetDirnameTimestamp()
+    let s:session.session_id = vim_session_recorder#native#GenerateUuid()
+    let s:session.start_time = vim_session_recorder#native#GetCurrentTimestamp()
+    let s:session.start_time_str = vim_session_recorder#native#GetDirnameTimestamp()
     let s:session.record_dir = vim_session_recorder#config#GetRecordDir()
 
     " Reset file tracking
@@ -104,7 +104,7 @@ endfunction
 " End session and finalize
 function! vim_session_recorder#session#EndSession()
     " Record end time
-    let l:end_time = vim_session_recorder#utils#GetCurrentTimestamp()
+    let l:end_time = vim_session_recorder#native#GetCurrentTimestamp()
 
     " Process each file - generate diffs
     let l:processed_files = []

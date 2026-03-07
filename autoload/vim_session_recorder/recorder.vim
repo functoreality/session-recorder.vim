@@ -44,7 +44,7 @@ function! vim_session_recorder#recorder#RecordFile(filepath)
     let l:file_record = {
         \ 'id': l:file_id,
         \ 'path': a:filepath,
-        \ 'opened': vim_session_recorder#utils#GetCurrentTimestamp(),
+        \ 'opened': vim_session_recorder#native#GetCurrentTimestamp(),
         \ 'lines_deleted': 0,
         \ 'lines_added': 0,
     \}
