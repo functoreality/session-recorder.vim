@@ -1,0 +1,21 @@
+vim_start: 2026-03-06 12:24:48
+vim_close: 2026-03-06 12:34:40
+opened_files:
+  - id: 1
+    opened: 2026-03-06 12:24:48
+    lines_deleted: 2
+    lines_added: 4
+    path: /full/path/to/file.ext
+  - id: 2
+    opened: 2026-03-06 12:24:50
+    lines_deleted: 0
+    lines_added: 0
+    path: /full/path/to/soft_link.ext
+    resolved_path: /full/path/to/soft_link_target.ext
+  - id: 3
+    opened: 2026-03-06 12:25:00
+    lines_deleted: 0
+    lines_added: 0
+    path: /full/path/to/large_file.bin
+    size: 5242880
+    is_binary: true
