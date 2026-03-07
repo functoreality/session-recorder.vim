@@ -11,17 +11,15 @@ endfunction
 " Create session directory
 " Args: record_dir, start_time, first_file, uuid_length
 function! vim_session_recorder#native#CreateSessionDir(record_dir, start_time, first_file, uuid_length)
-    let l:unique_id = vim_session_recorder#native#GenerateUuid()
-    let l:unique_id = l:unique_id[:(a:uuid_length - 1)]
+    " let l:unique_id = vim_session_recorder#native#GenerateUuid()
+    " let l:unique_id = l:unique_id[:(a:uuid_length - 1)]
 
     if !empty(a:first_file)
         let l:base_name = fnamemodify(a:first_file, ':t:r')
-        if len(l:base_name) > 20
-            let l:base_name = l:base_name[:19]
-        endif
-        let l:dir_name = a:start_time . '_' . l:base_name . '_' . l:unique_id
+        let l:base_name = l:base_name[:19] . '.' . fnamemodify(a:first_file, ':e')
+        let l:dir_name = a:start_time . '_' . l:base_name "  . '_' . l:unique_id
     else
-        let l:dir_name = a:start_time . '_' . l:unique_id
+        let l:dir_name = a:start_time . '_' "  . l:unique_id
     endif
 
     let l:session_path = a:record_dir . '/' . l:dir_name

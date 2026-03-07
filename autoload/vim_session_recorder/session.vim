@@ -8,7 +8,6 @@ let s:session = {
     \ 'record_dir': '',
     \ 'files': [],
     \ 'recorded_paths': {},
-    \ 'first_file': '',
     \ 'file_counter': 0,
     \}
 
@@ -29,16 +28,12 @@ function! vim_session_recorder#session#StartSession()
     let s:session.files = []
     let s:session.recorded_paths = {}
     let s:session.file_counter = 0
-    let s:session.first_file = ''
-
-    " Create session directory via Python
-    let l:first_file = ''
 
     " Call native function to create session directory
     let l:session_dir = vim_session_recorder#native#CreateSessionDir(
         \ s:session.record_dir,
         \ s:session.start_time_str,
-        \ l:first_file,
+        \ expand('%'),
         \ vim_session_recorder#config#GetUuidLength()
     \)
 
