@@ -19,13 +19,13 @@ augroup VimSessionRecorder
     autocmd!
     
     " Session lifecycle
-    autocmd VimEnter * if exists('*vim_session_recorder#OnVimEnter') | call vim_session_recorder#OnVimEnter() | endif
-    autocmd VimLeavePre * if exists('*vim_session_recorder#OnVimLeavePre') | call vim_session_recorder#OnVimLeavePre() | endif
+    autocmd VimEnter * if exists('*vim_session_recorder#main#OnVimEnter') | call vim_session_recorder#main#OnVimEnter() | endif
+    autocmd VimLeavePre * if exists('*vim_session_recorder#main#OnVimLeavePre') | call vim_session_recorder#main#OnVimLeavePre() | endif
     
     " File tracking - BufReadPost fires after buffer content is loaded
-    autocmd BufReadPost * if exists('*vim_session_recorder#OnBufRead') | call vim_session_recorder#OnBufRead(expand('<afile>')) | endif
-    autocmd BufNew,BufAdd * if exists('*vim_session_recorder#OnBufAdd') | call vim_session_recorder#OnBufAdd(expand('<afile>')) | endif
+    autocmd BufReadPost * if exists('*vim_session_recorder#main#OnBufRead') | call vim_session_recorder#main#OnBufRead(expand('<afile>')) | endif
+    autocmd BufNew,BufAdd * if exists('*vim_session_recorder#main#OnBufAdd') | call vim_session_recorder#main#OnBufAdd(expand('<afile>')) | endif
     
     " Skip recording for certain buffers
-    autocmd FileType netrw,gitcommit,fugitive,qf,vimfiler,nerdtree,startify,packer if exists('*vim_session_recorder#SkipBuffer') | call vim_session_recorder#SkipBuffer() | endif
+    autocmd FileType netrw,gitcommit,fugitive,qf,vimfiler,nerdtree,startify,packer if exists('*vim_session_recorder#main#SkipBuffer') | call vim_session_recorder#main#SkipBuffer() | endif
 augroup END

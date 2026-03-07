@@ -37,8 +37,7 @@ function! vim_session_recorder#recorder#RecordFile(filepath)
         let l:original_file = vim_session_recorder#python#CopyOriginalFile(
             \ a:filepath,
             \ l:file_id,
-            \ vim_session_recorder#session#GetSessionDir()
-        )
+            \ vim_session_recorder#session#GetSessionDir())
     endif
     
     " Build file record
@@ -98,8 +97,7 @@ function! vim_session_recorder#recorder#ProcessFileOnExit(file_record, session_d
     let l:diff_result = vim_session_recorder#python#GenerateDiff(
         \ l:original_path,
         \ l:file_record.path,
-        \ l:diff_path
-    )
+        \ l:diff_path)
     
     if l:diff_result.success
         let l:file_record.lines_added = l:diff_result.lines_added

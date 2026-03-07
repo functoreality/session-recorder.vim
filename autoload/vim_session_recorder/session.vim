@@ -112,8 +112,7 @@ function! vim_session_recorder#session#EndSession()
     for l:file_record in s:session.files
         let l:processed = vim_session_recorder#recorder#ProcessFileOnExit(
             \ l:file_record,
-            \ s:session.record_dir
-        )
+            \ s:session.record_dir)
         call add(l:processed_files, l:processed)
     endfor
     

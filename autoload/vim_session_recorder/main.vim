@@ -4,7 +4,7 @@
 let s:recorded_files = {}
 
 " Main entry point - called on VimEnter
-function! vim_session_recorder#OnVimEnter()
+function! vim_session_recorder#main#OnVimEnter()
     if !vim_session_recorder#config#IsEnabled()
         return
     endif
@@ -18,12 +18,12 @@ function! vim_session_recorder#OnVimEnter()
     
     let l:initial_file = expand('%:p')
     if !empty(l:initial_file) && filereadable(l:initial_file)
-        call vim_session_recorder#OnBufRead(l:initial_file)
+        call vim_session_recorder#main#OnBufRead(l:initial_file)
     endif
 endfunction
 
 " Main exit point - called on VimLeavePre
-function! vim_session_recorder#OnVimLeavePre()
+function! vim_session_recorder#main#OnVimLeavePre()
     if !vim_session_recorder#config#IsEnabled()
         return
     endif
@@ -36,7 +36,7 @@ function! vim_session_recorder#OnVimLeavePre()
 endfunction
 
 " Called when a file is read (existing file)
-function! vim_session_recorder#OnBufRead(filepath)
+function! vim_session_recorder#main#OnBufRead(filepath)
     if !vim_session_recorder#config#IsEnabled()
         return
     endif
@@ -56,7 +56,7 @@ function! vim_session_recorder#OnBufRead(filepath)
 endfunction
 
 " Called when a new buffer is added (new file)
-function! vim_session_recorder#OnBufAdd(filepath)
+function! vim_session_recorder#main#OnBufAdd(filepath)
     if !vim_session_recorder#config#IsEnabled()
         return
     endif
@@ -84,7 +84,7 @@ function! vim_session_recorder#OnBufAdd(filepath)
 endfunction
 
 " Skip certain buffer types
-function! vim_session_recorder#SkipBuffer()
+function! vim_session_recorder#main#SkipBuffer()
 endfunction
 
 " Internal function to check if buffer should be skipped
