@@ -2,7 +2,7 @@
 
 " Default configuration
 let s:default_config = {
-    \ 'record_dir': '/tmp/pf/nvim-records',
+    \ 'record_dir': '/tmp/pf/vim-records',
     \ 'enabled': 1,
     \ 'exclude_patterns': ['*.tmp', '*.log', '.git/*'],
     \ 'max_file_size': 1048576,
@@ -46,7 +46,7 @@ endfunction
 
 " Get record directory
 function! vim_session_recorder#config#GetRecordDir()
-    return get(s:config, 'record_dir', '/tmp/pf/nvim-records')
+    return get(s:config, 'record_dir', '/tmp/pf/vim-records')
 endfunction
 
 " Get exclude patterns

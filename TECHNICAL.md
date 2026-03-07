@@ -43,7 +43,7 @@ vim-session-recorder/
 ```vim
 " Default configuration
 let g:vim_session_recorder#config = {
-    \ 'record_dir': '/tmp/pf/nvim-records',
+    \ 'record_dir': '/tmp/pf/vim-records',
     \ 'enabled': 1,
     \ 'exclude_patterns': ['*.tmp', '*.log', '.git/*'],
     \ 'max_file_size': 1048576,  " 1MB in bytes
@@ -592,7 +592,7 @@ def get_dirname_timestamp() -> str:
 ┌─────────────────────────────────────────────────────────────────┐
 │                      Session Complete                            │
 │                                                                  │
-│  /tmp/pf/nvim-records/                                           │
+│  /tmp/pf/vim-records/                                           │
 │  └── 2026-03-06-12-24-48_file_a1b2c3d4/                        │
 │      ├── record.yaml                                            │
 │      ├── 1-original.ext                                         │
@@ -726,7 +726,7 @@ Plug 'your-repo/vim-session-recorder'
 ```vim
 " Default configuration (can be customized)
 let g:vim_session_recorder#config = {
-    \ 'record_dir': '/tmp/pf/nvim-records',
+    \ 'record_dir': '/tmp/pf/vim-records',
     \ 'enabled': 1,
     \ 'exclude_patterns': ['*.tmp', '*.log', '.git/*'],
     \ 'max_file_size': 1048576,
@@ -800,7 +800,7 @@ let g:vim_session_recorder#config.enabled = 0
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
 | Plugin language | Vim script + Python3 | Python for I/O, Vim for events |
-| Storage location | `/tmp/pf/nvim-records` | Volatile, per PRD |
+| Storage location | `/tmp/pf/vim-records` | Volatile, per PRD |
 | Diff format | Unified diff (`diff -u`) | Standard, LLM-friendly |
 | File ID | Sequential integer | Simple, ordered |
 | Session naming | Timestamp + first file + UUID | Unique, descriptive |

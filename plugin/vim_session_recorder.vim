@@ -24,7 +24,4 @@ augroup VimSessionRecorder
     
     " File tracking
     autocmd BufNew * call vim_session_recorder#main#OnBufNew(expand('<afile>:p'))
-    
-    " Skip recording for certain buffers
-    autocmd FileType netrw,gitcommit,fugitive,qf,vimfiler,nerdtree,startify,packer call vim_session_recorder#main#SkipBuffer()
 augroup END
