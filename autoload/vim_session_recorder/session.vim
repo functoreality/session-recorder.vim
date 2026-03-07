@@ -21,8 +21,8 @@ endfunction
 function! vim_session_recorder#session#StartSession()
     " Generate UUID and timestamp
     let s:session.session_id = vim_session_recorder#native#GenerateUuid()
-    let s:session.start_time = vim_session_recorder#native#GetCurrentTimestamp()
-    let s:session.start_time_str = vim_session_recorder#native#GetDirnameTimestamp()
+    let s:session.start_time = strftime('%Y-%m-%d %H:%M:%S')
+    let s:session.start_time_str = strftime('%Y-%m-%d-%H-%M-%S')
     let s:session.record_dir = vim_session_recorder#config#GetRecordDir()
 
     " Reset file tracking
@@ -55,25 +55,6 @@ function! vim_session_recorder#session#StartSession()
     " (Already done via VimLeavePre autocommand)
 endfunction
 
-" Update first file (called when first file is recorded)
-function! vim_session_recorder#session#UpdateFirstFile(filepath)
-    if empty(s:session.first_file) && !empty(a:filepath)
-        let s:session.first_file = a:filepath
-
-        " Rename session directory with first file name
-        let l:new_dir = vim_session_recorder#native#RenameSessionDir(
-            \ s:session.record_dir,
-            \ s:session.start_time_str,
-            \ a:filepath,
-            \ vim_session_recorder#config#GetUuidLength()
-        \)
-
-        if !empty(l:new_dir)
-            let s:session.record_dir = l:new_dir
-        endif
-    endif
-endfunction
-
 " Get session directory
 function! vim_session_recorder#session#GetSessionDir()
     return s:session.record_dir
@@ -104,7 +85,7 @@ endfunction
 " End session and finalize
 function! vim_session_recorder#session#EndSession()
     " Record end time
-    let l:end_time = vim_session_recorder#native#GetCurrentTimestamp()
+    let l:end_time = strftime('%Y-%m-%d %H:%M:%S')
 
     " Process each file - generate diffs
     let l:processed_files = []

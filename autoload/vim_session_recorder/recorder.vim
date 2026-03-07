@@ -28,9 +28,6 @@ function! vim_session_recorder#recorder#RecordFile(filepath)
     " Get next file ID
     let l:file_id = vim_session_recorder#session#GetNextFileId()
 
-    " Update first file if needed
-    call vim_session_recorder#session#UpdateFirstFile(a:filepath)
-
     " Copy original file if recordable
     let l:original_file = ''
     if l:should_copy
@@ -44,7 +41,7 @@ function! vim_session_recorder#recorder#RecordFile(filepath)
     let l:file_record = {
         \ 'id': l:file_id,
         \ 'path': a:filepath,
-        \ 'opened': vim_session_recorder#native#GetCurrentTimestamp(),
+        \ 'opened': strftime('%Y-%m-%d %H:%M:%S'),
         \ 'lines_deleted': 0,
         \ 'lines_added': 0,
     \}

@@ -8,16 +8,6 @@ function! vim_session_recorder#native#GenerateUuid()
     return l:uuid[:7]  " Default 8 chars
 endfunction
 
-" Get current timestamp (YYYY-MM-DD HH:MM:SS)
-function! vim_session_recorder#native#GetCurrentTimestamp()
-    return strftime('%Y-%m-%d %H:%M:%S')
-endfunction
-
-" Get dirname-friendly timestamp (YYYY-MM-DD-HH-MM-SS)
-function! vim_session_recorder#native#GetDirnameTimestamp()
-    return strftime('%Y-%m-%d-%H-%M-%S')
-endfunction
-
 " Create session directory
 " Args: record_dir, start_time, first_file, uuid_length
 function! vim_session_recorder#native#CreateSessionDir(record_dir, start_time, first_file, uuid_length)
@@ -38,33 +28,6 @@ function! vim_session_recorder#native#CreateSessionDir(record_dir, start_time, f
     call mkdir(l:session_path, 'p')
 
     return l:session_path
-endfunction
-
-" Rename session directory
-" Args: old_dir, start_time, first_file, uuid_length
-function! vim_session_recorder#native#RenameSessionDir(old_dir, start_time, first_file, uuid_length)
-    let l:old_path = fnamemodify(a:old_dir, ':p')
-    if !isdirectory(l:old_path)
-        return a:old_dir
-    endif
-
-    let l:unique_id = vim_session_recorder#native#GenerateUuid()
-    let l:unique_id = l:unique_id[:(a:uuid_length - 1)]
-    let l:base_name = fnamemodify(a:first_file, ':t:r')
-    if len(l:base_name) > 20
-        let l:base_name = l:base_name[:19]
-    endif
-
-    let l:new_dir_name = a:start_time . '_' . l:base_name . '_' . l:unique_id
-    let l:new_path = fnamemodify(a:old_dir, ':p:h') . '/' . l:new_dir_name
-
-    " Use Vim's rename (wrapper around mv)
-    try
-        call rename(l:old_path, l:new_path)
-        return l:new_path
-    catch
-        return a:old_dir
-    endtry
 endfunction
 
 " Check if file is binary
