@@ -18,7 +18,7 @@ function! vim_session_recorder#main#OnVimEnter()
 
     let l:initial_file = expand('%:p')
     if !empty(l:initial_file) && filereadable(l:initial_file)
-        call vim_session_recorder#main#OnBufNew(l:initial_file)
+        call vim_session_recorder#main#OnBufRead(l:initial_file)
     endif
 endfunction
 
@@ -35,8 +35,8 @@ function! vim_session_recorder#main#OnVimLeavePre()
     call vim_session_recorder#session#EndSession()
 endfunction
 
-" Called when a new buffer is added
-function! vim_session_recorder#main#OnBufNew(filepath)
+" Called when a file is read (existing file)
+function! vim_session_recorder#main#OnBufRead(filepath)
     if !vim_session_recorder#config#IsEnabled()
         return
     endif

@@ -22,6 +22,6 @@ augroup VimSessionRecorder
     autocmd VimEnter * call vim_session_recorder#main#OnVimEnter()
     autocmd VimLeavePre * call vim_session_recorder#main#OnVimLeavePre()
     
-    " File tracking
-    autocmd BufNew * call vim_session_recorder#main#OnBufNew(expand('<afile>:p'))
+    " File tracking - BufReadPost fires after buffer content is loaded
+    autocmd BufReadPost * call vim_session_recorder#main#OnBufRead(expand('<afile>:p'))
 augroup END
