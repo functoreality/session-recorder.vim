@@ -117,7 +117,7 @@ function! vim_session_recorder#native#CopyOriginalFile(src, file_id, dest_dir)
     endif
 
     let l:ext = fnamemodify(l:src, ':e')
-    let l:dest_filename = a:file_id . '-original' . l:ext
+    let l:dest_filename = a:file_id . '-original.' . l:ext
     let l:dest_path = a:dest_dir . '/' . l:dest_filename
 
     try

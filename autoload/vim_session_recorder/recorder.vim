@@ -90,7 +90,7 @@ function! vim_session_recorder#recorder#ProcessFileOnExit(file_record, session_d
 
     " Generate diff
     let l:original_path = a:session_dir . '/' . l:file_record.original_file
-    let l:diff_file = l:file.id . '-modification.diff'
+    let l:diff_file = l:file_record.id . '-modification.diff'
     let l:diff_path = a:session_dir . '/' . l:diff_file
 
     " Generate unified diff using native function
