@@ -42,8 +42,6 @@ function! vim_session_recorder#recorder#RecordFile(filepath)
         \ 'id': l:file_id,
         \ 'path': a:filepath,
         \ 'opened': strftime('%Y-%m-%d %H:%M:%S'),
-        \ 'lines_deleted': 0,
-        \ 'lines_added': 0,
     \}
 
     " Add resolved path if it's a symlink
@@ -84,8 +82,7 @@ function! vim_session_recorder#recorder#ProcessFileOnExit(file_record, session_d
 
     " Generate diff
     let l:original_path = a:session_dir . '/' . l:file_record.original_file
-    let l:diff_file = l:file_record.id . '-modification.diff'
-    let l:diff_path = a:session_dir . '/' . l:diff_file
+    let l:diff_path = a:session_dir . '/' . l:file_record.id . '-modification.diff'
 
     " Generate unified diff using native function
     let l:diff_result = vim_session_recorder#native#GenerateDiff(
@@ -93,11 +90,13 @@ function! vim_session_recorder#recorder#ProcessFileOnExit(file_record, session_d
         \ l:file_record.path,
         \ l:diff_path)
 
-    if l:diff_result.success
+    if !l:diff_result.success
+        let l:file_record.diff_generated = v:false
+    elseif l:diff_result.lines_added > 0 || l:diff_result.lines_deleted > 0
         let l:file_record.lines_added = l:diff_result.lines_added
         let l:file_record.lines_deleted = l:diff_result.lines_deleted
     else
-        let l:file_record.diff_generated = v:false
+        let l:file_record.modified = v:false
     endif
 
     return l:file_record

@@ -8,8 +8,7 @@ opened_files:
     path: /full/path/to/file.ext
   - id: 2
     opened: 2026-03-06 12:24:50
-    lines_deleted: 0
-    lines_added: 0
+    modified: false
     path: /full/path/to/soft_link.ext
     resolved_path: /full/path/to/soft_link_target.ext
   - id: 3

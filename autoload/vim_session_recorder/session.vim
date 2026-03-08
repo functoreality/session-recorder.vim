@@ -21,7 +21,7 @@ function! vim_session_recorder#session#StartSession()
     " Generate UUID and timestamp
     let s:session.session_id = vim_session_recorder#native#GenerateUuid()
     let s:session.start_time = strftime('%Y-%m-%d %H:%M:%S')
-    let s:session.start_time_str = strftime('%Y-%m-%d-%H-%M-%S')
+    let s:session.start_time_str = strftime('%H-%M-%S')
     let s:session.record_dir = vim_session_recorder#config#GetRecordDir()
 
     " Reset file tracking

@@ -16,7 +16,10 @@ function! vim_session_recorder#native#CreateSessionDir(record_dir, start_time, f
 
     if !empty(a:first_file)
         let l:base_name = fnamemodify(a:first_file, ':t:r')
-        let l:base_name = l:base_name[:19] . '.' . fnamemodify(a:first_file, ':e')
+        if len(l:base_name) > 20
+            let l:base_name = l:base_name[:17] . '..'
+        endif
+        let l:base_name = l:base_name . '.' . fnamemodify(a:first_file, ':e')
         let l:dir_name = a:start_time . '_' . l:base_name "  . '_' . l:unique_id
     else
         let l:dir_name = a:start_time . '_' "  . l:unique_id
@@ -102,7 +105,7 @@ function! vim_session_recorder#native#GenerateDiff(original_path, current_path, 
 
     " Check if original exists
     if !filereadable(l:original)
-        return {'success': v:false, 'lines_added': 0, 'lines_deleted': 0}
+        return {'success': v:false, 'lines_added': -1, 'lines_deleted': -1}
     endif
 
     " Case: current file doesn't exist (file was deleted)
@@ -120,7 +123,7 @@ function! vim_session_recorder#native#GenerateDiff(original_path, current_path, 
             call writefile(split(l:diff_content, '\n', 1), l:output)
             return {'success': v:true, 'lines_added': 0, 'lines_deleted': l:lines_deleted}
         catch
-            return {'success': v:false, 'lines_added': 0, 'lines_deleted': 0}
+            return {'success': v:false, 'lines_added': -1, 'lines_deleted': -1}
         endtry
     endif
 
@@ -130,7 +133,7 @@ function! vim_session_recorder#native#GenerateDiff(original_path, current_path, 
 
     if v:shell_error == 0
         " No differences
-        call writefile([], l:output)
+        " call writefile([], l:output)
         return {'success': v:true, 'lines_added': 0, 'lines_deleted': 0}
     elseif v:shell_error == 1
         " Differences found
@@ -149,7 +152,7 @@ function! vim_session_recorder#native#GenerateDiff(original_path, current_path, 
         return {'success': v:true, 'lines_added': l:lines_added, 'lines_deleted': l:lines_deleted}
     else
         " Diff error
-        return {'success': v:false, 'lines_added': 0, 'lines_deleted': 0}
+        return {'success': v:false, 'lines_added': -1, 'lines_deleted': -1}
     endif
 endfunction
 
