@@ -8,6 +8,8 @@ opened_files:
     path: /full/path/to/file.ext
     last_focus_line:
       location: 1
+      cursor_col: 18
+      time: 2026-03-06 12:34:40
       contents: line contents
   - id: 2
     opened: 2026-03-06 12:24:50
@@ -16,8 +18,10 @@ opened_files:
     resolved_path: /full/path/to/soft_link_target.ext
     last_focus_line:
       location: 3
-      head: long line long line long line long lin  # first 40 chars for line length >= 120
-      tail: ong line long line long line long line  # last 40 chars
+      cursor_col: 1
+      time: 2026-03-06 12:25:00
+      head: long line long line long lin  # first 30 chars for line length >= 100
+      tail: ong line long line long line  # last 30 chars
   - id: 3
     opened: 2026-03-06 12:25:00
     path: /full/path/to/large_file.bin
