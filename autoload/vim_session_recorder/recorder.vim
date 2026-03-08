@@ -109,12 +109,13 @@ function! s:ProcessLastFocusLine(file_record)
         return
     endif
 
-    " Add contents based on line length
-    if len(l:line_content) < 120
+    " Add contents based on line length, UTF-8 compatible
+    let l:line_len = strchars(l:line_content)
+    if l:line_len < 100
         let l:focus_info.contents = l:line_content
     else
-        let l:focus_info.head = l:line_content[0:39]
-        let l:focus_info.tail = l:line_content[-40:]
+        let l:focus_info.head = strcharpart(l:line_content, 0, 30)
+        let l:focus_info.tail = strcharpart(l:line_content, l:line_len - 30, 30)
     endif
 endfunction
 

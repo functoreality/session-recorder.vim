@@ -16,8 +16,8 @@ function! vim_session_recorder#native#CreateSessionDir(record_dir, start_time, f
 
     if !empty(a:first_file)
         let l:base_name = fnamemodify(a:first_file, ':t:r')
-        if len(l:base_name) > 20
-            let l:base_name = l:base_name[:17] . '..'
+        if strchars(l:base_name) > 20
+            let l:base_name = strcharpart(l:base_name, 0, 18) . '..'
         endif
         let l:base_name = l:base_name . '.' . fnamemodify(a:first_file, ':e')
         let l:dir_name = a:start_time . '_' . l:base_name "  . '_' . l:unique_id
@@ -159,12 +159,6 @@ endfunction
 " Write session data as JSON (replaces YAML)
 function! vim_session_recorder#native#WriteRecordJson(session_dir, session_data)
     let l:record_path = a:session_dir . '/record.json'
-
-    try
-        let l:json_content = json_encode(a:session_data)
-        call writefile([l:json_content], l:record_path)
-        return v:true
-    catch
-        return v:false
-    endtry
+    let l:json_content = json_encode(a:session_data)
+    call writefile([l:json_content], l:record_path)
 endfunction
