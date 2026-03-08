@@ -89,9 +89,11 @@ function! vim_session_recorder#session#UpdateFileFocus(filepath)
 
     " Get file index (1-based) and convert to 0-based for list access
     let l:idx = s:session.recorded_paths[a:filepath] - 1
-    let s:session.files[l:idx].last_focus_line = line('.')
-    let s:session.files[l:idx].last_focus_col = col('.')
-    let s:session.files[l:idx].last_focus_time = strftime('%Y-%m-%d %H:%M:%S')
+    let s:session.files[l:idx].last_focus_line = {
+        \ 'location': line('.'),
+        \ 'col': col('.'),
+        \ 'time': strftime('%Y-%m-%d %H:%M:%S'),
+        \}
 endfunction
 
 " End session and finalize

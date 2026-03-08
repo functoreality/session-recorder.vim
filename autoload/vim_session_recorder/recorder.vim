@@ -73,13 +73,14 @@ endfunction
 " Process last focus line - build focus data structure
 function! s:ProcessLastFocusLine(file_record)
     " Check if we have focus information
-    let l:focus_line = get(a:file_record, 'last_focus_line', 0)
-    if l:focus_line <= 0
+    let l:focus_info = get(a:file_record, 'last_focus_line', {})
+    if empty(l:focus_info) || !has_key(l:focus_info, 'location')
         return {}
     endif
 
-    let l:focus_col = get(a:file_record, 'last_focus_col', 0)
-    let l:focus_time = get(a:file_record, 'last_focus_time', '')
+    let l:focus_line = l:focus_info.location
+    let l:focus_col = get(l:focus_info, 'col', 0)
+    let l:focus_time = get(l:focus_info, 'time', '')
 
     " Read the line content from the current file
     let l:filepath = a:file_record.path
@@ -109,9 +110,7 @@ function! s:ProcessLastFocusLine(file_record)
     endif
 
     " Build focus data based on line length
-    let l:focus_data = {
-        \ 'location': l:focus_line,
-        \}
+    let l:focus_data = {'location': l:focus_line}
 
     if len(l:line_content) < 120
         let l:focus_data.contents = l:line_content
