@@ -70,12 +70,79 @@ function! vim_session_recorder#recorder#RecordFile(filepath)
     return l:file_id
 endfunction
 
+" Process last focus line - build focus data structure
+function! s:ProcessLastFocusLine(file_record)
+    " Check if we have focus information
+    let l:focus_line = get(a:file_record, 'last_focus_line', 0)
+    if l:focus_line <= 0
+        return {}
+    endif
+
+    let l:focus_col = get(a:file_record, 'last_focus_col', 0)
+    let l:focus_time = get(a:file_record, 'last_focus_time', '')
+
+    " Read the line content from the current file
+    let l:filepath = a:file_record.path
+    if !filereadable(l:filepath)
+        return {}
+    endif
+
+    " Get line content - use Vim's getline() if buffer is loaded, else read file
+    let l:line_content = ''
+    let l:bufnr = bufnr(l:filepath)
+    if l:bufnr > 0 && bufloaded(l:bufnr)
+        " Buffer is loaded, use getline
+        let l:line_content = getbufline(l:filepath, l:focus_line)
+        if !empty(l:line_content)
+            let l:line_content = l:line_content[0]
+        endif
+    else
+        " Read from file
+        let l:lines = readfile(l:filepath)
+        if l:focus_line <= len(l:lines)
+            let l:line_content = l:lines[l:focus_line - 1]
+        endif
+    endif
+
+    if empty(l:line_content)
+        return {}
+    endif
+
+    " Build focus data based on line length
+    let l:focus_data = {
+        \ 'location': l:focus_line,
+        \}
+
+    if len(l:line_content) < 120
+        let l:focus_data.contents = l:line_content
+    else
+        let l:focus_data.head = l:line_content[0:39]
+        let l:focus_data.tail = l:line_content[-40:]
+    endif
+
+    if l:focus_col > 0
+        let l:focus_data.col = l:focus_col
+    endif
+
+    if !empty(l:focus_time)
+        let l:focus_data.time = l:focus_time
+    endif
+
+    return l:focus_data
+endfunction
+
 " Process file on Vim exit - generate diff
 function! vim_session_recorder#recorder#ProcessFileOnExit(file_record, session_dir)
     let l:file_record = a:file_record
 
+    " Process last focus line for all files
+    let l:focus_data = s:ProcessLastFocusLine(l:file_record)
+    if !empty(l:focus_data)
+        let l:file_record.last_focus_line = l:focus_data
+    endif
+
     " Check if we have original file
-    if !has_key(l:file_record, 'original_file') || empty(l:file_record.original_file)
+    if empty(get(l:file_record, 'original_file', ''))
         " Large or binary file - no diff
         return l:file_record
     endif

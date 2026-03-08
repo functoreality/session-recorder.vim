@@ -17,11 +17,14 @@ runtime! autoload/vim_session_recorder/python.vim
 " Setup autocommands
 augroup VimSessionRecorder
     autocmd!
-    
+
     " Session lifecycle
     autocmd VimEnter * call vim_session_recorder#main#OnVimEnter()
     autocmd VimLeavePre * call vim_session_recorder#main#OnVimLeavePre()
-    
+
     " File tracking - BufReadPost fires after buffer content is loaded
     autocmd BufReadPost * call vim_session_recorder#main#OnBufRead(expand('<afile>:p'))
+
+    " Track focus position on buffer leave
+    autocmd BufLeave * call vim_session_recorder#session#UpdateFileFocus(expand('%:p'))
 augroup END

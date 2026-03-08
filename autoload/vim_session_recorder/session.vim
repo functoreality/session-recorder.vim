@@ -77,6 +77,23 @@ function! vim_session_recorder#session#GetFileRecords()
     return s:session.files
 endfunction
 
+" Update focus position for a file
+function! vim_session_recorder#session#UpdateFileFocus(filepath)
+    if empty(a:filepath)
+        return
+    endif
+
+    if !has_key(s:session.recorded_paths, a:filepath)
+        return
+    endif
+
+    " Get file index (1-based) and convert to 0-based for list access
+    let l:idx = s:session.recorded_paths[a:filepath] - 1
+    let s:session.files[l:idx].last_focus_line = line('.')
+    let s:session.files[l:idx].last_focus_col = col('.')
+    let s:session.files[l:idx].last_focus_time = strftime('%Y-%m-%d %H:%M:%S')
+endfunction
+
 " End session and finalize
 function! vim_session_recorder#session#EndSession()
     " Record end time

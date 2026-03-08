@@ -20,7 +20,7 @@
 * 子目录内容：
 	* `record.yaml` 内容示例见 `example-record.yaml`。允许改用 JSON 格式，只要信息等价。
 	* `1-original.ext` 启动时编号 1 的文件的内容；该文件扩展名与原始文件一致（注：复制原文件内容，而非软链接本身）
-	* `1-modification.diff` 退出时编号 1 文件的修改内容
+	* `1-modification.diff` 退出时编号 1 文件的修改内容（仅当存在修改时记录）
 	* `2-original.ext`, `2-modification.diff` 依此类推
 
 ## 边界处理
