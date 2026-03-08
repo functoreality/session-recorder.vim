@@ -91,7 +91,7 @@ function! vim_session_recorder#session#UpdateFileFocus(filepath)
     let l:idx = s:session.recorded_paths[a:filepath] - 1
     let s:session.files[l:idx].last_focus_line = {
         \ 'location': line('.'),
-        \ 'col': col('.'),
+        \ 'cursor_col': col('.'),
         \ 'time': strftime('%Y-%m-%d %H:%M:%S'),
         \}
 endfunction

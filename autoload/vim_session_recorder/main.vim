@@ -32,6 +32,9 @@ function! vim_session_recorder#main#OnVimLeavePre()
         return
     endif
 
+    " Manual record last cursor focus, since BufLeave not fired on Vim leave
+    call vim_session_recorder#session#UpdateFileFocus(expand('%:p'))
+
     call vim_session_recorder#session#EndSession()
 endfunction
 
