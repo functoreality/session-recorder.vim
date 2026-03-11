@@ -96,6 +96,13 @@ function! vim_session_recorder#session#UpdateFileFocus(filepath)
         \}
 endfunction
 
+" Record execution history for a file
+function! vim_session_recorder#session#RecordFileExecution(filepath)
+    " Get file index (1-based) and convert to 0-based for list access
+    let l:idx = s:session.recorded_paths[a:filepath] - 1
+    let s:session.files[l:idx].executed = v:true
+endfunction
+
 " End session and finalize
 function! vim_session_recorder#session#EndSession()
     " Record end time
