@@ -1,0 +1,39 @@
+name: Tests
+
+on: [push, pull_request]
+
+jobs:
+  backend:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ['3.11', '3.13']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m unittest discover -s tests -p test_recorder.py -v
+
+  editor:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        neovim: [false, true]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: rhysd/action-setup-vim@v1
+        id: editor
+        with:
+          neovim: ${{ matrix.neovim }}
+          version: ${{ matrix.os == 'windows-latest' && !matrix.neovim && 'nightly' || 'stable' }}
+      - run: python -m unittest discover -s tests -p test_editor.py -v
+        env:
+          RECORDER_TEST_EDITOR: ${{ steps.editor.outputs.executable }}
