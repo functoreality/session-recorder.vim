@@ -35,7 +35,7 @@ helper timeout, particularly with many files on a network filesystem.
 
 ## Tests
 
-From the repository root, with Python 3.11+:
+From the repository root, with Python 3 (3.11+ recommended):
 
 ```sh
 python -m unittest discover -s tests -v
@@ -53,6 +53,10 @@ Neovim tests run actions after real `VimEnter`. Batch Vim tests explicitly fire
 that event before the actions, then exercise real buffer and exit events.
 They check original copies, modified/new files, late file opens, loaded buffers,
 JSON text, Unicode paths, shared location discovery, exclusions and disablement.
+
+Older Python versions are unverified. Avoid unnecessary recent-only syntax
+and APIs when a small equivalent works on older versions, without promising
+compatibility or adding an older-version test matrix.
 
 The CI workflow runs backend tests on Linux, macOS and Windows with Python
 3.11 and 3.13. Separate editor jobs target both Vim and Neovim on all three

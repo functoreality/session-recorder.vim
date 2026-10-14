@@ -9,7 +9,9 @@ when the editor exits normally.
 
 ## Install
 
-Requirements: Python 3.11+, and Neovim 0.9+ or Vim 8.2+ with `+eval`, `+job`,
+Use Python 3, with 3.11+ recommended. Older versions may work but are
+unverified, and compatibility is not guaranteed. The editor requires
+Neovim 0.9+ or Vim 8.2+ with `+eval`, `+job`,
 `+channel`, JSON and floating-point support. No Python packages, editor Python
 provider, or Unix command-line utilities are required. Use UTF-8 editor encoding.
 The implementation targets Linux, macOS and native Windows. See
@@ -35,8 +37,9 @@ let g:vim_session_recorder#config = {
 
 On Windows, use a path such as `C:/Python313/python.exe`. Otherwise the plugin
 tries `python3`, `python`, then the Windows `py -3` launcher. The first discovered
-interpreter must meet the version requirement. Restart the editor after changing
-configuration. Plugin managers that defer loading can load it after `VimEnter`.
+interpreter is used. Set an explicit executable if you prefer another one.
+Restart the editor after changing configuration. Plugin managers that defer
+loading can load it after `VimEnter`.
 
 ## Storage
 

@@ -7,7 +7,8 @@
 
 ## 安装
 
-需要 Python 3.11+，以及 Neovim 0.9+，或具有 `+eval`、`+job`、`+channel`、
+需要 Python 3，推荐 3.11 或更新版本。旧版本可能可用，但未经验证，不保证兼容。
+编辑器需要 Neovim 0.9+，或具有 `+eval`、`+job`、`+channel`、
 JSON 和浮点数支持的 Vim 8.2+。无需安装 Python 包、编辑器 Python provider
 或 Unix 命令行工具。编辑器使用 UTF-8 编码。
 实现面向 Linux、macOS 和原生 Windows，实际验证范围见
@@ -31,7 +32,8 @@ let g:vim_session_recorder#config = {
 ```
 
 Windows 可使用 `C:/Python313/python.exe`。默认按 `python3`、`python`、
-Windows 的 `py -3` 顺序查找，找到的第一个解释器必须符合版本要求。
+Windows 的 `py -3` 顺序查找，并使用找到的第一个解释器。
+如需选择其他解释器，请明确配置其路径。
 使用编辑器所在系统的原生 Python。修改配置后重启编辑器。
 插件也支持在 `VimEnter` 后由插件管理器加载。
 

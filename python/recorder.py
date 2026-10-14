@@ -227,8 +227,6 @@ def dispatch(request):
 
 if __name__ == "__main__":
     try:
-        if sys.version_info < (3, 11):
-            raise ValueError("Python 3.11 or newer is required")
         request = json.loads(sys.stdin.buffer.read().decode("utf-8"))
         result = {"ok": True, "result": dispatch(request)}
     except Exception as exc:

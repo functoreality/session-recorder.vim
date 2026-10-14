@@ -25,8 +25,10 @@ against the same editor process during the transition.
 ## Configuration and behavior changes
 
 The existing `g:vim_session_recorder#config` dictionary remains the entry point.
-Set it before plugin loading. Python 3.11+ is now an external executable,
-independent of the editor's Python provider. Use `python_executable` if needed.
+Set it before plugin loading. Python now runs as an external executable,
+independent of the editor's Python provider. Python 3.11+ is recommended,
+while older versions are unverified and compatibility is not guaranteed.
+Use `python_executable` if needed.
 `uuid_length` is ignored, as all sessions use a full random identifier.
 Exclusion patterns now follow their documented glob syntax, so previous
 workarounds written as Vim regex need conversion.

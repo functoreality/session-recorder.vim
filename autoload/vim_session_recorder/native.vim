@@ -25,7 +25,7 @@ function! vim_session_recorder#native#Call(request) abort
         endfor
     endif
     if empty(l:python) || !executable(l:python)
-        throw 'Python 3.11+ executable unavailable. Set python_executable in plugin config.'
+        throw 'Python 3 executable unavailable. Set python_executable in plugin config.'
     endif
     let l:args = [l:python, s:helper]
     if fnamemodify(l:python, ':t') =~? '^py\%(.exe\)\?$'
