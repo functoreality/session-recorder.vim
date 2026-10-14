@@ -1,93 +1,67 @@
-" autoload/vim_session_recorder.vim - Main plugin logic
+let s:initialized = 0
+let s:error = ''
 
-" Global state
-let s:recorded_files = {}
-
-" Main entry point - called on VimEnter
-function! vim_session_recorder#main#OnVimEnter()
-    if !vim_session_recorder#config#IsEnabled()
-        return
-    endif
-
-    if expand('%') ==# ''
-        return
-    endif
-
-    call vim_session_recorder#config#LoadConfig()
-    call vim_session_recorder#session#StartSession()
-
-    let l:initial_file = expand('%:p')
-    if !empty(l:initial_file) && filereadable(l:initial_file)
-        call vim_session_recorder#main#OnBufRead(l:initial_file)
-    endif
-endfunction
-
-" Main exit point - called on VimLeavePre
-function! vim_session_recorder#main#OnVimLeavePre()
-    if !vim_session_recorder#config#IsEnabled()
-        return
-    endif
-
-    if !vim_session_recorder#session#HasActiveSession()
-        return
-    endif
-
-    " Manual record last cursor focus, since BufLeave not fired on Vim leave
-    call vim_session_recorder#session#UpdateFileFocus(expand('%:p'))
-
-    call vim_session_recorder#session#EndSession()
-endfunction
-
-" Called when a file is read (existing file)
-function! vim_session_recorder#main#OnBufRead(filepath)
-    if !vim_session_recorder#config#IsEnabled()
-        return
-    endif
-
-    if !vim_session_recorder#session#HasActiveSession()
-        return
-    endif
-
-    let l:filepath = a:filepath
-    if l:filepath =~# '^file://'
-        let l:filepath = substitute(l:filepath, '^file://', '', '')
-    endif
-
-    if s:ShouldSkipBuffer(l:filepath)
-        return
-    endif
-
-    if !filereadable(l:filepath)
-        return
-    endif
-
-    let l:file_id = vim_session_recorder#recorder#RecordFile(l:filepath)
-    if l:file_id > 0
-        let s:recorded_files[l:filepath] = l:file_id
-    endif
-endfunction
-
-" Internal function to check if buffer should be skipped
-function! s:ShouldSkipBuffer(filepath)
-    let l:filepath = a:filepath
-
-    if empty(l:filepath)
-        return v:true
-    endif
-
-    if &buftype =~ 'nofile\|quickfix\|terminal'
-        return v:true
-    endif
-
-    for l:pattern in vim_session_recorder#config#GetExcludePatterns()
-        if l:filepath =~# l:pattern
-            return v:true
+function! vim_session_recorder#main#Event(event, ...) abort
+    try
+        if a:event ==# 'enter'
+            if s:initialized
+                return
+            endif
+            let s:initialized = 1
+            call vim_session_recorder#config#LoadConfig()
+            if vim_session_recorder#config#IsEnabled()
+                for l:buffer in getbufinfo({'bufloaded': 1})
+                    call s:Read(l:buffer.name)
+                endfor
+            endif
+        elseif !s:initialized || !vim_session_recorder#config#IsEnabled()
+            return
+        elseif a:event ==# 'read'
+            call s:Read(a:1)
+        elseif a:event ==# 'focus'
+            call vim_session_recorder#session#UpdateFileFocus(a:1)
+        elseif a:event ==# 'leave' && vim_session_recorder#session#HasActiveSession()
+            call vim_session_recorder#session#UpdateFileFocus(expand('%:p'))
+            call vim_session_recorder#session#EndSession()
         endif
-    endfor
+    catch
+        let s:error = v:exception
+        if a:event ==# 'enter' || !vim_session_recorder#session#HasActiveSession()
+            call vim_session_recorder#config#Disable()
+        endif
+        echohl WarningMsg
+        echom '[vim-session-recorder] ' . s:error
+        echohl None
+    endtry
+endfunction
 
-    if has_key(s:recorded_files, l:filepath)
-        return v:true
+function! s:Read(path) abort
+    if empty(a:path) || a:path =~# '^\a\+://'
+        return
     endif
+    let l:path = fnamemodify(a:path, ':p')
+    let l:buffer = bufnr(l:path)
+    if l:buffer < 0 || getbufvar(l:buffer, '&buftype') !=# '' || isdirectory(l:path)
+        return
+    endif
+    if vim_session_recorder#session#HasPath(l:path)
+        return
+    endif
+    for l:candidate in [l:path, resolve(l:path)]
+        let l:normalized = substitute(l:candidate, '\\', '/', 'g')
+        for l:pattern in vim_session_recorder#config#GetConfig().exclude_patterns
+            if l:normalized =~# glob2regpat(l:pattern) || l:normalized =~# glob2regpat('*/' . l:pattern)
+                return
+            endif
+        endfor
+    endfor
+    if !vim_session_recorder#session#HasActiveSession()
+        call vim_session_recorder#session#StartSession()
+    endif
+    call vim_session_recorder#recorder#RecordFile(l:path)
+endfunction
 
-    return v:false
+function! vim_session_recorder#main#Status() abort
+    echom json_encode({'config': vim_session_recorder#config#GetConfig(),
+                \ 'session': vim_session_recorder#session#GetSessionDir(), 'last_error': s:error})
 endfunction
