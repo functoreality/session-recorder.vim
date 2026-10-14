@@ -1,6 +1,7 @@
 """Small JSON-over-stdio helper. No editor provider or third-party modules."""
 
 import difflib
+import errno
 import fnmatch
 import json
 import os
@@ -81,15 +82,32 @@ def excluded(path, config):
                for pattern in config["exclude_patterns"] for value in candidates)
 
 
-def start(config):
+def file_label(filename):
+    """Keep a readable, bounded basename hint that is safe on all three systems."""
+    label = re.sub(r'[<>:"/\\|?*\x00-\x1f\x7f]', "_", filename).strip(" .")
+    return label.encode("utf-8")[:64].decode("utf-8", errors="ignore").rstrip(" .")
+
+
+def start(config, first_file=""):
     timestamp = now()
     session_id = uuid4().hex
     parent = Path(config["root"])
     if not config["standalone"]:
         parent = parent / timestamp[:10] / "vim"
     parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    directory = parent / (timestamp[11:19].replace(":", "-") + "_" + session_id)
-    directory.mkdir(mode=0o700)
+    clock = timestamp[11:19].replace(":", "-")
+    label = file_label(Path(first_file).name) if first_file else ""
+    compact = clock + "_" + session_id
+    directory = parent / (clock + "_" + label + "_" + session_id if label else compact)
+    try:
+        directory.mkdir(mode=0o700)
+    except OSError as exc:
+        # A custom root can leave too little room for the optional hint.
+        if not label or (exc.errno != errno.ENAMETOOLONG
+                         and getattr(exc, "winerror", None) not in (123, 206)):
+            raise
+        directory = parent / compact
+        directory.mkdir(mode=0o700)
     return {"session_id": session_id, "vim_start": timestamp,
             "directory": str(directory)}
 
@@ -216,7 +234,7 @@ def dispatch(request):
     if action == "configure":
         return configure(request["config"])
     if action == "start":
-        return start(request["config"])
+        return start(request["config"], request.get("first_file", ""))
     if action == "capture":
         return capture(request["path"], request["file_id"],
                        request["directory"], request["config"])

@@ -1,6 +1,7 @@
 """Portable backend checks using synthetic files and isolated paths."""
 
 import importlib.util
+import errno
 import json
 import os
 from pathlib import Path
@@ -81,7 +82,7 @@ class RecorderTests(unittest.TestCase):
         config, session, directory = self.session(record_dir=str(target))
         self.assertTrue(config["standalone"])
         self.assertEqual(directory.parent, target)
-        self.assertEqual(session["session_id"], directory.name.split("_")[1])
+        self.assertEqual(session["session_id"], directory.name.rsplit("_", 1)[-1])
 
     def test_locator_utf8_and_line_endings_preserve_path(self):
         target = str(self.root / "日志 space ")
@@ -108,8 +109,11 @@ class RecorderTests(unittest.TestCase):
 
     def test_same_second_sessions_have_unique_directories(self):
         with mock.patch.object(recorder, "now", return_value="2026-10-14T23:59:59+08:00"):
-            config, first, first_dir = self.session()
-            second = recorder.start(config)
+            config = self.config()
+            first_file = str(self.root / "notes.md")
+            first = recorder.start(config, first_file)
+            first_dir = Path(first["directory"])
+            second = recorder.start(config, first_file)
         second_dir = Path(second["directory"])
         self.assertNotEqual(first["session_id"], second["session_id"])
         self.assertNotEqual(first_dir, second_dir)
@@ -117,6 +121,51 @@ class RecorderTests(unittest.TestCase):
         self.assertTrue(first_dir.is_dir())
         self.assertTrue(second_dir.is_dir())
         self.assertNotIn(":", first_dir.name)
+
+    def test_session_directory_keeps_portable_first_file_hint(self):
+        config = self.config()
+        cases = [("draft_notes.md", "draft_notes.md"),
+                 ("记录.md", "记录.md"), ("résumé.md", "résumé.md"),
+                 ("report📄.txt", "report📄.txt"),
+                 ('notes:a?b*.txt', "notes_a_b_.txt"),
+                 ("CON.txt", "CON.txt")]
+        for filename, expected in cases:
+            with self.subTest(filename=filename):
+                session = recorder.start(config, str(self.root / filename))
+                directory = Path(session["directory"])
+                self.assertTrue(directory.is_dir())
+                self.assertTrue(directory.name.endswith("_" + expected + "_" + session["session_id"]))
+
+    def test_long_unicode_hint_is_bounded_and_empty_hint_can_be_omitted(self):
+        config = self.config()
+        session = recorder.start(config, str(self.root / ("文" * 100 + ".md")))
+        name = Path(session["directory"]).name
+        label = name[9:].rsplit("_", 1)[0]
+        self.assertTrue(label.startswith("文"))
+        self.assertLessEqual(len(label.encode("utf-8")), 64)
+        session = recorder.start(config, str(self.root / " . "))
+        self.assertRegex(Path(session["directory"]).name, r"^\d{2}-\d{2}-\d{2}_[0-9a-f]{32}$")
+
+    def test_long_path_falls_back_without_hiding_permission_errors(self):
+        config = self.config()
+        original_mkdir = Path.mkdir
+
+        def create(path, *args, **kwargs):
+            if "_notes.md_" in path.name:
+                raise OSError(errno.ENAMETOOLONG, "Synthetic long path")
+            return original_mkdir(path, *args, **kwargs)
+
+        with mock.patch.object(Path, "mkdir", new=create):
+            session = recorder.start(config, str(self.root / "notes.md"))
+        self.assertRegex(Path(session["directory"]).name, r"^\d{2}-\d{2}-\d{2}_[0-9a-f]{32}$")
+        def denied(path, *args, **kwargs):
+            if "_notes.md_" in path.name:
+                raise PermissionError(errno.EACCES, "Denied")
+            return original_mkdir(path, *args, **kwargs)
+
+        with mock.patch.object(Path, "mkdir", new=denied):
+            with self.assertRaises(PermissionError):
+                recorder.start(config, str(self.root / "notes.md"))
 
     def test_glob_exclusions(self):
         config = self.config()

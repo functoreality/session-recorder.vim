@@ -118,6 +118,14 @@ class EditorTests(unittest.TestCase):
                     self.assertEqual(item["last_focus_line"]["contents"], "after 中文")
                     self.assertEqual(result["artifacts"][0][item["original_file"]], b"before" + ending)
                     self.assertRegex(result["paths"][0], r"^\d{4}-\d{2}-\d{2}/vim/[^/]+/record.json$")
+                    self.assertRegex(result["paths"][0], r"/\d{2}-\d{2}-\d{2}_first\.txt_[0-9a-f]{32}/record.json$")
+
+    def test_unicode_first_file_labels_session_directory(self):
+        actions = ["edit 工作笔记.md", "call setline(1, 'created')", "write", "edit first.txt"]
+        for result in self.run_editor(actions):
+            self.assertIn("_工作笔记.md_", result["paths"][0])
+            self.assertNotIn("_first.txt_", result["paths"][0])
+            self.assertTrue(result["records"][0]["opened_files"][0]["path"].endswith("工作笔记.md"))
 
     def test_empty_start_and_new_file(self):
         actions = ["edit new.txt", "call setline(1, 'created')", "write", "edit first.txt"]

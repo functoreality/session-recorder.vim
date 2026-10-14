@@ -56,7 +56,7 @@ function! s:Read(path) abort
         endfor
     endfor
     if !vim_session_recorder#session#HasActiveSession()
-        call vim_session_recorder#session#StartSession()
+        call vim_session_recorder#session#StartSession(l:path)
     endif
     call vim_session_recorder#recorder#RecordFile(l:path)
 endfunction

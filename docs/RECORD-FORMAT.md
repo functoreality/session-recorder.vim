@@ -18,10 +18,22 @@ Required top-level fields:
 | `vim_close` | Completion timestamp, with UTC offset |
 | `opened_files` | Ordered array of file records |
 
-Shared storage uses `raw-logs/YYYY-MM-DD/vim/HH-MM-SS_<session_id>/`.
-Standalone `record_dir` skips the date/source levels. Names never include the
-source filename, and session directories are created exclusively.
+Shared storage uses
+`raw-logs/YYYY-MM-DD/vim/HH-MM-SS_<first-file>_<session_id>/`.
+`first-file` is a readable hint from the first recorded basename. Unicode is
+preserved, Windows-invalid characters become `_`, and the hint is truncated
+at a UTF-8 character boundary to at most 64 bytes. Leading/trailing spaces
+and periods are trimmed. A missing hint or a name/path-length error falls
+back to `HH-MM-SS_<session_id>`. Other creation errors are reported normally.
+The timestamp prefix also keeps Windows device names from becoming reserved
+directory names. Session directories are created exclusively.
+Standalone `record_dir` skips the date/source levels.
 File IDs are positive integers unique inside the session.
+
+The directory name is a browsing aid, not a machine-readable source of paths.
+It does not list every file opened in a session and does not change later.
+Readers discover `record.json` recursively and use its fields. Both compact
+and readable directory names use the same version 1 JSON format.
 
 Every file has `id`, absolute `path`, `opened` with UTC offset, and
 `snapshot_status`. Optional `resolved_path` identifies a symlink target.

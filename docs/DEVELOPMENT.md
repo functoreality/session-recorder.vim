@@ -45,6 +45,8 @@ Tests use temporary synthetic files and isolated configuration/data roots.
 No live editor configuration, existing history, schedule or raw log is changed.
 Backend tests cover platform discovery, UTF-8 locator validation, collisions,
 globs, text/binary/size cases, errors, session JSON and valid diff application.
+Readable directory names are checked for Unicode, Windows-invalid characters,
+bounded hints, same-file collisions and fallback under path-length restrictions.
 Git is optional and used to apply synthetic patches in one test.
 Patch checks override Git's automatic newline conversion for that invocation,
 and exercise LF, CRLF and missing final newlines under a synthetic Git config
@@ -57,6 +59,8 @@ Neovim tests run actions after real `VimEnter`. Batch Vim tests explicitly fire
 that event before the actions, then exercise real buffer and exit events.
 They check original copies, modified/new files, late file opens, loaded buffers,
 JSON text, Unicode paths, shared location discovery, exclusions and disablement.
+They also verify that the first filename labels the directory and stays
+unchanged after another file is opened.
 
 Older Python versions are unverified. Avoid unnecessary recent-only syntax
 and APIs when a small equivalent works on older versions, without promising

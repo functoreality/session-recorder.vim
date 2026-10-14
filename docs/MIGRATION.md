@@ -15,6 +15,11 @@ not mix old and new functions.
 - `record_dir` no longer has a hardcoded temporary-directory default.
   Relative paths and implicit `~` expansion are rejected.
 
+New session names include a portable hint from the first recorded filename,
+followed by the full random session ID. Existing directories are not renamed.
+Recursive `record.json` readers accept both the earlier compact names and the
+readable names. Use manifest fields rather than splitting directory names.
+
 To move existing records, stop the relevant collectors/readers, preserve the
 old directory as a backup, copy the records you need, update the shared path
 file atomically, and restart editors. Moving old session folders under their

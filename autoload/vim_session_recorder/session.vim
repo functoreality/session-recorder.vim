@@ -15,8 +15,9 @@ function! vim_session_recorder#session#HasPath(path) abort
     return has_key(s:paths, s:PathKey(a:path))
 endfunction
 
-function! vim_session_recorder#session#StartSession() abort
+function! vim_session_recorder#session#StartSession(first_file) abort
     let s:session = vim_session_recorder#native#Call({'action': 'start',
+                \ 'first_file': a:first_file,
                 \ 'config': vim_session_recorder#config#GetConfig()})
     let s:files = []
     let s:paths = {}

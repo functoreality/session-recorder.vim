@@ -72,6 +72,19 @@ process and never reads My Big Brother's `config.json` or `results_root`.
 Each session directory contains `record.json`, small UTF-8 original files,
 and unified diffs for changed files. Dates represent the first recorded file's
 local natural date. A session spanning midnight stays in that directory.
+Session names include the first recorded file's basename for manual browsing:
+
+```text
+YYYY-MM-DD/vim/HH-MM-SS_notes.md_<session_id>/
+```
+
+Unicode names are retained. Characters invalid on Windows are replaced with
+`_`, and the basename hint is limited to 64 UTF-8 bytes without cutting a
+character. A missing hint or a path-length restriction can leave the compact
+`HH-MM-SS_<session_id>` name. The full random ID still prevents name collisions.
+The hint stays unchanged when other files are opened during the same session.
+For recovery, match the full path in `record.json` and use its `original_file`
+snapshot. That snapshot represents the file when first recorded.
 See the [record format](docs/RECORD-FORMAT.md) before writing a reader.
 
 ## Options and verification
