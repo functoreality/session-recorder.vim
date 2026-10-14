@@ -2,6 +2,7 @@
 
 import importlib.util
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -182,7 +183,13 @@ class RecorderTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("git"), "Git is required to apply generated patches")
     def test_unified_diff_applies_with_missing_final_newlines(self):
         cases = [(b"old", b"new"), (b"old\n", b"new"), (b"old", b"new\n"),
-                 (b"first\nold", b"first\nnew"), (b"", b"new"), (b"old", b"")]
+                 (b"first\nold", b"first\nnew"), (b"", b"new"), (b"old", b""),
+                 (b"old\r\n", b"new\r\n"), (b"first\r\nold", b"first\r\nnew"),
+                 (b"old\r\n", b"new\n")]
+        # Reproduce Windows Git defaults without changing the user's config.
+        git_config = self.root / "gitconfig"
+        git_config.write_bytes(b"[core]\n\tautocrlf = true\n")
+        env = dict(os.environ, GIT_CONFIG_GLOBAL=str(git_config), GIT_CONFIG_NOSYSTEM="1")
         for index, (original, current) in enumerate(cases):
             with self.subTest(original=original, current=current):
                 directory = self.root / f"apply-{index}"
@@ -195,8 +202,9 @@ class RecorderTests(unittest.TestCase):
                 patch = directory / "changes.patch"
                 patch.write_bytes(content)
                 applied = subprocess.run(
-                    ["git", "apply", "--no-index", "--", str(patch)],
-                    cwd=directory, capture_output=True, text=True,
+                    ["git", "-c", "core.autocrlf=false", "-c", "core.eol=lf",
+                     "apply", "--no-index", "--", str(patch)],
+                    cwd=directory, env=env, capture_output=True, text=True,
                 )
                 self.assertEqual(applied.returncode, 0, applied.stderr)
                 self.assertEqual(target.read_bytes(), current)

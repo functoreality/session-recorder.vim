@@ -46,6 +46,10 @@ No live editor configuration, existing history, schedule or raw log is changed.
 Backend tests cover platform discovery, UTF-8 locator validation, collisions,
 globs, text/binary/size cases, errors, session JSON and valid diff application.
 Git is optional and used to apply synthetic patches in one test.
+Patch checks override Git's automatic newline conversion for that invocation,
+and exercise LF, CRLF and missing final newlines under a synthetic Git config
+with `core.autocrlf=true`. Editor fixtures use explicit bytes and verify that
+both LF and CRLF original files are preserved exactly.
 
 Editor tests discover Neovim and a full Vim on PATH. Unsupported/missing editors
 are skipped. `RECORDER_TEST_EDITOR` can select one absolute executable.
@@ -67,8 +71,10 @@ Vim option. A configured workflow is not evidence of a completed remote run.
 At implementation time, 15 backend tests and eight editor tests passed locally
 on Linux with Python 3.13.7. The editor suite passed separately with Neovim
 0.10.4 and Vim 9.1.0967. The test Vim was unpacked in a temporary directory,
-without installing it or changing editor configuration. Native macOS/Windows
-remain unverified until the corresponding CI or manual runs complete.
+without installing it or changing editor configuration.
+[GitHub Actions run 38541515422](https://github.com/functoreality/session-recorder.vim/actions/runs/38541515422)
+passed every Linux and macOS job. Its Windows jobs exposed newline assumptions
+in the tests. The corrected Windows tests still need a CI rerun.
 
 ## Before a public release
 

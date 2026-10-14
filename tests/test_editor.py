@@ -39,15 +39,17 @@ EDITORS = editors()
 
 @unittest.skipUnless(EDITORS, "A full Vim (+job/+channel) or Neovim is required")
 class EditorTests(unittest.TestCase):
-    def run_editor(self, actions, *, files=(), config="{}", locator=None, extra_env=None):
+    def run_editor(self, actions, *, files=(), config="{}", locator=None,
+                   extra_env=None, line_ending=b"\n"):
         results = []
         for editor, nvim in EDITORS:
             with self.subTest(editor=editor), tempfile.TemporaryDirectory() as temporary:
                 base = Path(temporary)
                 work = base / "work space 中文"
                 work.mkdir()
-                (work / "first.txt").write_text("before\n", encoding="utf-8")
-                (work / "second.json").write_text('{"original": true}\n', encoding="utf-8")
+                # Keep fixture bytes explicit, including on Windows.
+                (work / "first.txt").write_bytes(b"before" + line_ending)
+                (work / "second.json").write_bytes(b'{"original": true}' + line_ending)
                 logs = base / "data" / "my-big-brother" / "raw-logs"
                 env = dict(os.environ, XDG_CONFIG_HOME=str(base / "config"),
                            XDG_DATA_HOME=str(base / "data"),
@@ -105,14 +107,17 @@ class EditorTests(unittest.TestCase):
         return results
 
     def test_existing_edit_and_focus(self):
-        for result in self.run_editor(["call setline(1, 'after 中文')", "write"], files=["first.txt"]):
-            self.assertEqual(len(result["records"]), 1)
-            record = result["records"][0]
-            item = record["opened_files"][0]
-            self.assertEqual((item["lines_added"], item["lines_deleted"]), (1, 1))
-            self.assertEqual(item["last_focus_line"]["contents"], "after 中文")
-            self.assertEqual(result["artifacts"][0][item["original_file"]], b"before\n")
-            self.assertRegex(result["paths"][0], r"^\d{4}-\d{2}-\d{2}/vim/[^/]+/record.json$")
+        for ending in (b"\n", b"\r\n"):
+            with self.subTest(line_ending=ending):
+                for result in self.run_editor(["call setline(1, 'after 中文')", "write"],
+                                              files=["first.txt"], line_ending=ending):
+                    self.assertEqual(len(result["records"]), 1)
+                    record = result["records"][0]
+                    item = record["opened_files"][0]
+                    self.assertEqual((item["lines_added"], item["lines_deleted"]), (1, 1))
+                    self.assertEqual(item["last_focus_line"]["contents"], "after 中文")
+                    self.assertEqual(result["artifacts"][0][item["original_file"]], b"before" + ending)
+                    self.assertRegex(result["paths"][0], r"^\d{4}-\d{2}-\d{2}/vim/[^/]+/record.json$")
 
     def test_empty_start_and_new_file(self):
         actions = ["edit new.txt", "call setline(1, 'created')", "write", "edit first.txt"]
