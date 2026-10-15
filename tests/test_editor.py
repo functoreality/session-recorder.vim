@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import importlib.util
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -40,7 +41,7 @@ EDITORS = editors()
 @unittest.skipUnless(EDITORS, "A full Vim (+job/+channel) or Neovim is required")
 class EditorTests(unittest.TestCase):
     def run_editor(self, actions, *, files=(), config="{}", locator=None,
-                   extra_env=None, line_ending=b"\n"):
+                   extra_env=None, line_ending=b"\n", storage_v2=False):
         results = []
         for editor, nvim in EDITORS:
             with self.subTest(editor=editor), tempfile.TemporaryDirectory() as temporary:
@@ -63,6 +64,12 @@ class EditorTests(unittest.TestCase):
                     logs, config_dir = app / "data" / "raw-logs", app / "configs"
                 else:
                     config_dir = base / "config" / "my-big-brother"
+                if storage_v2:
+                    spec = importlib.util.spec_from_file_location('fixture_storage', ROOT / 'python/storage.py')
+                    contract = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(contract)
+                    layout = contract.Layout.install(config_dir, logs.parent, 4)
+                    logs = layout.daily
                 if locator is not None:
                     config_dir.mkdir(parents=True)
                     value = str(base / "custom root 中文") if locator == "custom" else locator
@@ -105,6 +112,26 @@ class EditorTests(unittest.TestCase):
                                               for p, _ in records],
                                 "messages": (work / "messages.txt").read_text(encoding="utf-8")})
         return results
+
+    def test_storage_v2_records_checkpoint_and_saved_changes(self):
+        for result in self.run_editor(["call setline(1, 'changed')", "write"],
+                                      files=['first.txt'], storage_v2=True):
+            self.assertEqual(len(result['records']), 1)
+            record = result['records'][0]
+            self.assertEqual(record['storage_version'], 2)
+            self.assertFalse(record['segment_open'])
+            self.assertTrue(record['opened_files'][0]['modified'])
+            self.assertNotIn('[vim-session-recorder]', result['messages'])
+
+    def test_storage_v2_deleted_active_fixture_does_not_recreate_date(self):
+        actions = [
+            "let daydir = fnamemodify(vim_session_recorder#session#GetSessionDir(), ':h:h')",
+            "call rename(daydir, fnamemodify(daydir, ':h:h') . '/removed-day')",
+            "call setline(1, 'after removal')", "write",
+        ]
+        for result in self.run_editor(actions, files=['first.txt'], storage_v2=True):
+            self.assertEqual(result['records'], [])
+            self.assertNotIn('[vim-session-recorder]', result['messages'])
 
     def test_existing_edit_and_focus(self):
         for ending in (b"\n", b"\r\n"):

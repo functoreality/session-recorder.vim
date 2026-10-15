@@ -31,6 +31,21 @@ function! vim_session_recorder#session#GetNextFileId() abort
     return len(s:files) + 1
 endfunction
 
+function! vim_session_recorder#session#Checkpoint() abort
+    if empty(s:session) || get(vim_session_recorder#config#GetConfig(), 'storage_version', 1) != 2
+        return
+    endif
+    let l:result = vim_session_recorder#native#Call({'action': 'checkpoint',
+                \ 'session': s:session, 'files': s:files,
+                \ 'config': vim_session_recorder#config#GetConfig()})
+    let s:session = l:result.session
+    let s:files = l:result.files
+    let s:paths = {}
+    for l:index in range(len(s:files))
+        let s:paths[s:PathKey(s:files[l:index].path)] = l:index
+    endfor
+endfunction
+
 function! vim_session_recorder#session#AddFileRecord(record) abort
     let s:paths[s:PathKey(a:record.path)] = len(s:files)
     call add(s:files, a:record)

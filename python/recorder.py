@@ -12,6 +12,11 @@ import sys
 import tempfile
 from datetime import datetime
 from uuid import uuid4
+import importlib.util
+
+_spec = importlib.util.spec_from_file_location("mbb_storage", Path(__file__).with_name("storage.py"))
+storage = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(storage)
 
 
 def now():
@@ -49,9 +54,13 @@ def configure(config):
     config_dir, data_dir = platform_paths()
     locator = config_dir / "raw-logs-path.txt"
     override = config.get("record_dir", "")
+    layout = storage.Layout.load(config_dir, required=False) if not override else None
     if override:
         root = absolute(override)
         origin = "record_dir override (standalone, outside shared discovery)"
+    elif layout is not None:
+        root = layout.daily
+        origin = str(config_dir / "storage.json")
     elif locator.exists():
         value = locator.read_bytes().decode("utf-8")
         if value.endswith("\r\n"):
@@ -70,6 +79,7 @@ def configure(config):
     if not isinstance(patterns, list) or any(not isinstance(p, str) for p in patterns):
         raise ValueError("exclude_patterns must be a list of glob strings")
     return {"root": str(root), "locator": str(locator), "path_source": origin,
+            "storage_config": str(config_dir), "storage_version": 2 if layout else 1,
             "standalone": bool(override), "max_file_size": size,
             "exclude_patterns": patterns}
 
@@ -92,7 +102,10 @@ def start(config, first_file=""):
     timestamp = now()
     session_id = uuid4().hex
     parent = Path(config["root"])
-    if not config["standalone"]:
+    layout = storage.Layout.load(config["storage_config"]) if config.get("storage_version") == 2 else None
+    if layout is not None:
+        parent = layout.ensure_day(layout.day(timestamp)) / "vim"
+    elif not config["standalone"]:
         parent = parent / timestamp[:10] / "vim"
     parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     clock = timestamp[11:19].replace(":", "-")
@@ -108,8 +121,12 @@ def start(config, first_file=""):
             raise
         directory = parent / compact
         directory.mkdir(mode=0o700)
-    return {"session_id": session_id, "vim_start": timestamp,
-            "directory": str(directory)}
+    session = {"session_id": session_id, "vim_start": timestamp, "directory": str(directory)}
+    if layout is not None:
+        day = layout.day(timestamp)
+        session.update(logical_day=day, workspace_id=layout.record(day)["workspace_id"],
+                       root_session_id=session_id)
+    return session
 
 
 def read_text_bytes(path, limit):
@@ -128,10 +145,18 @@ def read_text_bytes(path, limit):
 
 
 def capture(path, file_id, directory, config):
+    if config.get("storage_version") == 2:
+        layout = storage.Layout.load(config["storage_config"])
+        day = Path(directory).parent.parent.name
+        record = layout.record(day)
+        if not record or record["disposition"] == "discarded":
+            return None
     path = absolute(path)
     if excluded(path, config) or excluded(path.resolve(), config) or path.is_dir():
         return None
     record = {"id": file_id, "path": str(path), "opened": now()}
+    if config.get("storage_version") == 2:
+        record["day_checkpoint"] = True
     resolved = path.resolve()
     if resolved != path:
         record["resolved_path"] = str(resolved)
@@ -183,6 +208,8 @@ def finalize_file(record, directory, limit):
     if record.get("snapshot_status") != "ok":
         record["diff_generated"] = False
         return
+    record.pop("diff_status", None)
+    record.pop("error", None)
     path = Path(record["path"])
     if path.exists():
         current, reason = read_text_bytes(path, limit)
@@ -194,6 +221,10 @@ def finalize_file(record, directory, limit):
     else:
         current, new_name = b"", "/dev/null"
     original = (directory / record["original_file"]).read_bytes()
+    if record.get('day_checkpoint'):
+        checkpoint_file = str(record['id']) + '-checkpoint.txt'
+        (directory / checkpoint_file).write_bytes(current)
+        record['checkpoint_file'] = checkpoint_file
     content, added, deleted = unified(original, current,
                                       record["original_file"], new_name)
     record["modified"] = original != current
@@ -202,10 +233,20 @@ def finalize_file(record, directory, limit):
         filename = f"{record['id']}-modification.diff"
         (directory / filename).write_bytes(content)
         record.update(diff_file=filename, lines_added=added, lines_deleted=deleted)
+    elif "diff_file" in record:
+        (directory / record.pop("diff_file")).write_bytes(b"")
+        record.pop("lines_added", None)
+        record.pop("lines_deleted", None)
 
 
-def finalize(session, files, config):
+def finalize(session, files, config, *, checkpoint=False):
     directory = Path(session["directory"])
+    if config.get("storage_version") == 2:
+        layout = storage.Layout.load(config["storage_config"])
+        state = layout.record(session["logical_day"])
+        if (not state or state["disposition"] == "discarded"
+                or state["workspace_id"] != session["workspace_id"]):
+            return {"record": "", "files": 0, "errors": 0, "discarded": True}
     for record in files:
         focus = record.get("last_focus_line", {})
         if "time_epoch" in focus:
@@ -217,6 +258,12 @@ def finalize(session, files, config):
             record["error"] = str(exc)
     payload = {"schema_version": 1, "source": "vim", "session_id": session["session_id"],
                "vim_start": session["vim_start"], "vim_close": now(), "opened_files": files}
+    if config.get("storage_version") == 2:
+        payload.update(storage_version=2, logical_day=session["logical_day"],
+                       root_session_id=session["root_session_id"], segment_open=checkpoint,
+                       diff_scope="Independent logical-day segment through the recorded checkpoint")
+        if session.get("boundary_gap"):
+            payload["boundary_gap"] = session["boundary_gap"]
     # A reader sees either the previous complete file or the new complete file.
     with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=directory,
                                      prefix="record-", suffix=".tmp", delete=False) as stream:
@@ -229,6 +276,53 @@ def finalize(session, files, config):
                           for record in files)}
 
 
+def checkpoint(session, files, config):
+    """Persist a day-local checkpoint or begin an independent later-day segment.
+
+    On a delayed rollover, retain the last prior-day checkpoint. Never read
+    today's disk bytes and attribute their changes to a closed earlier day.
+    """
+    if config.get("storage_version") != 2:
+        return {"session": session, "files": files}
+    layout = storage.Layout.load(config["storage_config"])
+    current = now()
+    day = layout.day(current)
+    if day == session["logical_day"]:
+        result = finalize(session, files, config, checkpoint=True)
+        return {"session": session, "files": files, "discarded": result.get("discarded", False)}
+    old_record = Path(session["directory"]) / "record.json"
+    prior = layout.record(session["logical_day"])
+    if old_record.exists() and prior and prior["disposition"] != "discarded":
+        payload = storage.read_json(old_record)
+        payload.update(segment_open=False, rollover_observed_at=current,
+                       boundary_gap="Changes after the last checkpoint and before rollover are not attributed")
+        storage.write_json(old_record, payload)
+    try:
+        following = start(config, files[0]["path"] if files else "")
+    except storage.DiscardedDay:
+        return {"session": session, "files": files, "discarded": True}
+    following["root_session_id"] = session["root_session_id"]
+    following["boundary_gap"] = "No observation between the last prior-day checkpoint and this segment baseline"
+    refreshed = []
+    for old in files:
+        item = capture(old["path"], len(refreshed) + 1, following["directory"], config)
+        if item is not None:
+            item.update(continued=True, original_opened=old.get("original_opened", old["opened"]))
+            prior_snapshot = Path(session['directory']) / old.get('checkpoint_file', '__missing__')
+            if item.get('original_file') and prior_snapshot.is_file():
+                previous = prior_snapshot.read_bytes()
+                latest = (Path(following['directory']) / item['original_file']).read_bytes()
+                bridge, _, _ = unified(previous, latest, 'previous-checkpoint', item['original_file'])
+                if bridge:
+                    name = str(item['id']) + '-boundary.diff'
+                    (Path(following['directory']) / name).write_bytes(bridge)
+                    item.update(boundary_diff_file=name,
+                                boundary_diff_scope='Cross-boundary observed difference, not attributable to this day alone')
+            refreshed.append(item)
+    finalize(following, refreshed, config, checkpoint=True)
+    return {"session": following, "files": refreshed, "rotated": True}
+
+
 def dispatch(request):
     action = request["action"]
     if action == "configure":
@@ -239,7 +333,12 @@ def dispatch(request):
         return capture(request["path"], request["file_id"],
                        request["directory"], request["config"])
     if action == "finalize":
+        if request["config"].get("storage_version") == 2:
+            value = checkpoint(request["session"], request["files"], request["config"])
+            return finalize(value["session"], value["files"], request["config"])
         return finalize(request["session"], request["files"], request["config"])
+    if action == "checkpoint":
+        return checkpoint(request["session"], request["files"], request["config"])
     raise ValueError("Unknown recorder action")
 
 
