@@ -4,8 +4,8 @@ English | [简体中文](docs/zh-CN/README.md)
 
 Record opened files, original text, saved changes and the last cursor position
 in each editor session. Use these local records for a work review or another
-tool of your choice. Recording starts with the first eligible file and ends
-when the editor exits normally.
+tool of your choice. Recording starts when Vim starts with a named buffer and
+finishes when the editor exits normally.
 
 ## Install
 
@@ -44,7 +44,7 @@ loading can load it after `VimEnter`.
 ## Storage
 
 The plugin works without My Big Brother or a configuration file. It writes
-`<data_root>/daily/<calendar-date>/vim/<segment>/` using the system date,
+`<data_root>/daily/<start-date>/vim/<session>/` using the session-start date,
 equivalent to `date +%F`. No review boundary is read or applied.
 
 By default, `data_root` is the platform data directory for `my-big-brother`.
@@ -69,14 +69,13 @@ own operating system, account and filesystem. Default data locations are:
 - macOS: `~/Library/Application Support/my-big-brother/data`.
 - Windows: `%LOCALAPPDATA%/my-big-brother/data`.
 
-Checkpoints are written on editor events and every 30 seconds. A new calendar
-date starts an independent segment with fresh original snapshots. Later
-segments do not depend on earlier directories. A late rollover reports its
-unobserved interval. Deleting an inactive old day abandons it. The plugin
-will not recreate it or select another directory for that day's events.
+A session keeps its opening date and original snapshots until normal exit,
+even across midnight. There are no periodic checkpoints or daily segments.
+Deleting an opening date abandons its active session too. The plugin does not
+recreate it or move the output to another date.
 
-Each segment contains `record.json`, bounded UTF-8 original snapshots,
-checkpoints and modification diffs. Directory names include the first file's
+Each session contains opening snapshots, plus `record.json` and modification
+diffs published at exit. Directory names include the initial buffer's
 basename for browsing, for example:
 
 ```text
@@ -96,29 +95,32 @@ name. See the [record format](docs/RECORD-FORMAT.md).
 To use this plugin independently of My Big Brother, explicitly configure an
 absolute `record_dir` before loading it. Standalone recording writes
 `<record_dir>/YYYY-MM-DD/<session>/` and finalizes at editor exit. It does not use the
-shared date registry, checkpoints or daily cleanup lifecycle.
+shared date registry or daily cleanup lifecycle.
 
 ## Options and verification
 
 ```vim
 let g:vim_session_recorder#config = {
     \ 'enabled': 1,
-    \ 'exclude_patterns': ['*.tmp', '*.log', '.git/*'],
+    \ 'exclude_patterns': ['\.tmp$', '\.log$', '/\.git/'],
     \ 'max_file_size': 1048576,
-    \ 'helper_timeout_ms': 30000,
     \}
 ```
 
 - `enabled`: set to `0` before plugin loading to disable all recording.
-- `exclude_patterns`: case-sensitive globs against path suffixes or individual
-  path components. They are not Vim regular expressions. For example,
-  `private/*` excludes files below any `private` directory, including nested
-  files. Use `/` in patterns on every platform. Your list replaces the defaults.
-- `max_file_size`: files at or above this byte count have metadata only.
-  Binary files containing NUL and non-UTF-8 files also have metadata only.
-- `helper_timeout_ms`: maximum time for each helper invocation, including the
-  entire exit comparison. Increase it for many files or a slow disk. A timeout
-  reports a recording failure, and may leave originals without `record.json`.
+- `exclude_patterns`: case-sensitive Vim regular expressions against the
+  entered absolute path. Your list replaces the defaults. The example excludes
+  `.tmp`, `.log` and paths under `.git` using `/` separators. On Windows, match
+  the actual path separators used by your editor. Historical default strings
+  are retained, but are still interpreted as Vim regular expressions.
+- `max_file_size`: existing files at or above this byte count have metadata
+  only. The limit applies to the opening copy, not the exit comparison.
+  NUL-containing binary files also have metadata only. Non-UTF-8 text and
+  UTF-16 BOM text retain their original bytes.
+- `helper_timeout_ms`: optional positive limit for each Python invocation.
+  By default calls wait until finished, matching the original behavior.
+  Setting this option also limits the whole exit comparison. A timeout reports
+  a recording failure and may leave originals without `record.json`.
 - `record_dir`: optional absolute standalone destination with dated
   `<record_dir>/YYYY-MM-DD/<session>/` output. Omit it to use shared My Big Brother storage.
 
@@ -127,7 +129,9 @@ current session directory and latest error. Use `:messages` for recording errors
 
 For a quick check, open a disposable text file, change and save one line, then
 exit normally. Find its new session's `record.json` and `*-modification.diff`.
-A disabled plugin, excluded file or an empty editor creates no session.
+A disabled plugin or Vim started with an empty unnamed buffer creates no
+session. Excluded files are omitted from a named startup session. New paths
+without an existing disk file have no opening snapshot.
 
 ## Recording boundaries
 
@@ -143,8 +147,9 @@ changes can appear in the diff. A cursor position does not measure attention,
 and the optional `executed` marker is a user mapping's claim, not test evidence.
 Renames are observed as paths, not linked into a rename event.
 
-Shared recording publishes checkpoints throughout the session. Standalone
-recording publishes only at exit. A crash can leave incomplete artifacts.
+Both shared and standalone recording publish the final record only at exit.
+A session spanning midnight remains under its opening date. A crash can leave
+incomplete artifacts.
 Source read errors and comparison errors are reported in metadata. A final
 write failure appears in editor messages and leaves diagnostic artifacts.
 
@@ -154,6 +159,11 @@ This independently installed collector supplies the editor records. My Big
 Brother includes their source adapter. Enable its `vim` source explicitly
 after checking a synthetic session. Sharing a directory does not itself
 authorize analysis. See the [reader contract](docs/RECORD-FORMAT.md).
+
+When available, system `diff -u` retains its native comparison algorithm.
+Otherwise the Python standard library supplies the diff without another
+required dependency. After startup, opening files, switching buffers and saving do not run Python
+or regenerate diffs.
 
 Current implementation and tests are described in [Development](docs/DEVELOPMENT.md).
 Earlier personal requirements and proposals are preserved in

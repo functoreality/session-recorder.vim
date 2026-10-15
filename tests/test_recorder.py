@@ -189,36 +189,13 @@ class RecorderTests(unittest.TestCase):
             with self.assertRaises(PermissionError):
                 recorder.start(config, str(self.root / "notes.md"))
 
-    def test_glob_exclusions(self):
-        config = self.config()
-        for path in ("/project/output.tmp", "/project/server.log", "/project/.git/config",
-                     r"C:\project\.git\objects\blob", r"C:\project\output.tmp"):
-            with self.subTest(path=path):
-                self.assertTrue(recorder.excluded(path, config))
-        for path in ("/project/main.py", "/project/catalog.md", "/project/.github/workflow.yml"):
-            with self.subTest(path=path):
-                self.assertFalse(recorder.excluded(path, config))
-        config["exclude_patterns"] = ["private/*", "*.secret"]
-        self.assertTrue(recorder.excluded("/project/private/notes.md", config))
-        self.assertTrue(recorder.excluded("/project/password.secret", config))
-        self.assertFalse(recorder.excluded("/project/private-notes.md", config))
-
-    def test_capture_skips_excluded_and_directory(self):
+    def test_capture_leaves_exclusions_to_vim_and_skips_missing_files(self):
         config, _, directory = self.session()
-        self.assertIsNone(self.capture(self.root / "ignored.log", directory, config))
+        source = self.root / "ignored.log"
+        source.write_bytes(b"caller already applied Vim regexp exclusions\n")
+        self.assertEqual(self.capture(source, directory, config)["snapshot_status"], "ok")
         self.assertIsNone(self.capture(self.root, directory, config))
-
-    def test_new_file(self):
-        config, session, directory = self.session()
-        source = self.root / "new.txt"
-        record = self.capture(source, directory, config)
-        self.assertTrue(record["new_file"])
-        self.assertEqual((directory / record["original_file"]).read_bytes(), b"")
-        source.write_bytes(b"created\n")
-        recorder.finalize(session, [record], config)
-        self.assertEqual(record["lines_added"], 1)
-        self.assertEqual(record["lines_deleted"], 0)
-        self.assertTrue(record["modified"])
+        self.assertIsNone(self.capture(self.root / "missing.txt", directory, config))
 
     def test_deleted_file(self):
         config, session, directory = self.session()
@@ -243,7 +220,7 @@ class RecorderTests(unittest.TestCase):
         self.assertEqual(payload["source"], "vim")
         self.assertEqual(payload["session_id"], session["session_id"])
         self.assertEqual(payload["vim_start"], session["vim_start"])
-        self.assertIsNotNone(recorder.datetime.fromisoformat(payload["vim_close"]).tzinfo)
+        self.assertIsNone(recorder.datetime.strptime(payload["vim_close"], "%Y-%m-%d %H:%M:%S").tzinfo)
         self.assertEqual(payload["opened_files"], [record])
         self.assertFalse(record["modified"])
         self.assertTrue(record["diff_generated"])
@@ -261,15 +238,15 @@ class RecorderTests(unittest.TestCase):
         git_config = self.root / "gitconfig"
         git_config.write_bytes(b"[core]\n\tautocrlf = true\n")
         env = dict(os.environ, GIT_CONFIG_GLOBAL=str(git_config), GIT_CONFIG_NOSYSTEM="1")
-        for index, (original, current) in enumerate(cases):
-            with self.subTest(original=original, current=current):
+        cases = [(original, current, fallback) for original, current in cases for fallback in (False, True)]
+        for index, (original, current, fallback) in enumerate(cases):
+            with self.subTest(original=original, current=current, fallback=fallback):
                 directory = self.root / f"apply-{index}"
                 directory.mkdir()
                 target = directory / "sample.txt"
                 target.write_bytes(original)
-                content, added, deleted = recorder.unified(
-                    original, current, "a/sample.txt", "b/sample.txt"
-                )
+                compare = recorder.unified_fallback if fallback else recorder.unified
+                content, added, deleted = compare(original, current, "a/sample.txt", "b/sample.txt")
                 patch = directory / "changes.patch"
                 patch.write_bytes(content)
                 applied = subprocess.run(
@@ -282,11 +259,11 @@ class RecorderTests(unittest.TestCase):
                 self.assertEqual(added, int(bool(current)))
                 self.assertEqual(deleted, int(bool(original)))
 
-    def test_binary_non_utf8_and_large_inputs(self):
+    def test_binary_and_large_opening_inputs(self):
         config, session, directory = self.session(max_file_size=8)
         records = []
         for index, (content, expected) in enumerate([
-            (b"a\0b", "binary"), (b"\xff", "non_utf8"), (b"12345678", "too_large")
+            (b"a\0b", "binary"), (b"12345678", "too_large")
         ], 1):
             with self.subTest(expected=expected):
                 source = self.root / f"input-{index}.txt"
@@ -298,18 +275,76 @@ class RecorderTests(unittest.TestCase):
         recorder.finalize(session, records, config)
         self.assertTrue(all(not record["diff_generated"] for record in records))
 
-    def test_file_growing_past_limit_at_exit_is_not_zero_changes(self):
+    def test_non_utf8_and_utf16_snapshots_preserve_original_bytes(self):
+        config, session, directory = self.session()
+        for index, (original, current) in enumerate([
+            ("café\n".encode("latin1"), "café changed\n".encode("latin1")),
+            ("初始\n".encode("utf-16"), "修改\n".encode("utf-16")),
+        ], 1):
+            with self.subTest(encoding=index):
+                source = self.root / f"encoded-{index}.txt"
+                source.write_bytes(original)
+                record = self.capture(source, directory, config, index)
+                self.assertEqual(record["snapshot_status"], "ok")
+                snapshot = directory / record["original_file"]
+                self.assertEqual(snapshot.read_bytes(), original)
+                source.write_bytes(current)
+                recorder.finalize(session, [record], config)
+                self.assertTrue(record["modified"])
+                self.assertTrue(record["diff_generated"])
+                self.assertEqual(snapshot.read_bytes(), original)
+
+    def test_snapshots_preserve_legal_extensions_and_executable_mode(self):
+        config, _, directory = self.session()
+        for index, filename in enumerate(["README", "notes.记录", "notes.abcdefghijklmnopq"], 1):
+            with self.subTest(filename=filename):
+                source = self.root / filename
+                source.write_bytes(b"snapshot\n")
+                source.chmod(0o750)
+                record = self.capture(source, directory, config, index)
+                expected = str(index) + "-original" + (source.suffix or ".txt")
+                self.assertEqual(record["original_file"], expected)
+                if os.name != "nt":
+                    self.assertEqual((directory / expected).stat().st_mode & 0o777, 0o750)
+                self.assertNotIn("size", record)
+
+    def test_file_growing_past_opening_limit_still_gets_exit_diff(self):
         config, session, directory = self.session(max_file_size=8)
         source = self.root / "growing.txt"
         source.write_bytes(b"short")
         record = self.capture(source, directory, config)
         source.write_bytes(b"long enough to exceed the limit")
         summary = recorder.finalize(session, [record], config)
-        self.assertFalse(record["diff_generated"])
-        self.assertEqual(record["diff_status"], "too_large")
-        self.assertNotIn("modified", record)
-        self.assertNotIn("lines_added", record)
-        self.assertEqual(summary["errors"], 1)
+        self.assertTrue(record["diff_generated"])
+        self.assertTrue(record["modified"])
+        self.assertEqual(record["lines_added"], 1)
+        self.assertEqual(record["lines_deleted"], 1)
+        self.assertEqual(summary["errors"], 0)
+
+    def test_repeated_lines_and_cr_only_use_correct_lf_diff_counts(self):
+        cases = [(b"one\n" * 1000,
+                  b"one\n" * 500 + b"edited\n" + b"one\n" * 499),
+                 (b"a\rb\rc\r", b"a\rx\rc\r")]
+        for original, current in cases:
+            for fallback in (False, True):
+                with self.subTest(fallback=fallback, size=len(original)):
+                    compare = recorder.unified_fallback if fallback else recorder.unified
+                    content, added, deleted = compare(original, current, "old", "new")
+                    self.assertEqual((added, deleted), (1, 1))
+                    self.assertIn(b"@@", content)
+
+    @unittest.skipUnless(shutil.which("diff"), "System diff is unavailable")
+    def test_system_diff_retains_snapshot_path_and_timestamp_headers(self):
+        config, session, directory = self.session()
+        source = self.root / "header.txt"
+        source.write_bytes(b"before\n")
+        record = self.capture(source, directory, config)
+        source.write_bytes(b"after\n")
+        recorder.finalize(session, [record], config)
+        lines = (directory / record["diff_file"]).read_bytes().split(b"\n")
+        self.assertIn(str(directory / record["original_file"]).encode(), lines[0])
+        self.assertIn(str(source).encode(), lines[1])
+        self.assertIn(b"\t", lines[0])
 
     def test_one_failed_file_does_not_block_other_files_or_json(self):
         config, session, directory = self.session()

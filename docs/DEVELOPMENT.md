@@ -9,29 +9,33 @@ autoload/vim_session_recorder/
   config.vim                    Configuration and enabled state
   main.vim                      Event routing and error reporting
   session.vim                   Session/file identity and cursor events
-  recorder.vim                  Capture boundary
+  recorder.vim                  Byte snapshots and exit-time focus excerpts
   native.vim                    Shell-free Python job transport
-python/recorder.py              Paths, bounded snapshots, diff and JSON I/O
+python/recorder.py              Shared paths, exit diff and JSON I/O
 tests/                          Isolated synthetic backend/editor tests
 docs/                           Current contracts and reader documentation
   zh-CN/README.md                Chinese user guide
   archive/                      Earlier personal requirements/proposals
 ```
 
-Keep host events in Vimscript and platform/file operations in the small
-standard-library helper. There is no daemon, package installation step,
+Keep host events and immediate byte snapshots in Vimscript. The small
+standard-library helper handles configuration, session directory creation
+and final comparison. Reading, switching buffers and saving never invoke it. There is no daemon, package installation step,
 provider requirement, shared runtime service, or general plugin framework.
 Each helper call receives JSON on stdin using an executable argument list.
 UTF-8 stdin is decoded explicitly, independent of Windows console encoding.
 Its stdout response uses ASCII-safe JSON.
 
 New session directories use exclusive creation with a random identifier.
-The helper bounds both initial and final source reads by `max_file_size`.
+The opening size check uses `max_file_size`. Final comparison has no added
+size or encoding restriction. A session stays under its opening date, including
+across midnight. No timer or buffer event publishes checkpoints or day segments.
 Per-file failures are recorded without stopping other comparisons.
 The final JSON is replaced atomically within the session directory.
 These choices do not make the entire artifact set transactional or recover
-an interrupted comparison. Slow diff alignment can exceed the configurable
-helper timeout, particularly with many files on a network filesystem.
+an interrupted comparison. Calls wait for completion unless the user configures
+`helper_timeout_ms`. System `diff -u` is used where available, with a portable
+standard-library fallback. The fallback can align changes differently.
 
 ## Tests
 
@@ -44,7 +48,8 @@ python -m unittest discover -s tests -v
 Tests use temporary synthetic files and isolated configuration/data roots.
 No live editor configuration, existing history, schedule or capture is changed.
 Backend tests cover platform discovery, shared storage validation, collisions,
-globs, text/binary/size cases, errors, session JSON and valid diff application.
+byte and size cases, errors, session JSON and valid diff application.
+Editor tests cover the original Vim-regexp exclusion semantics.
 Readable directory names are checked for Unicode, Windows-invalid characters,
 bounded hints, same-file collisions and fallback under path-length restrictions.
 Git is optional and used to apply synthetic patches in one test.
@@ -57,8 +62,10 @@ Editor tests discover Neovim and a full Vim on PATH. Unsupported/missing editors
 are skipped. `RECORDER_TEST_EDITOR` can select one absolute executable.
 Neovim tests run actions after real `VimEnter`. Batch Vim tests explicitly fire
 that event before the actions, then exercise real buffer and exit events.
-They check original copies, modified/new files, late file opens, loaded buffers,
-JSON text, Unicode paths, shared location discovery, exclusions and disablement.
+They check immediate original copies, non-UTF-8 and UTF-16 bytes, long Unicode
+extensions, executable permissions, existing-file-only recording, initial-buffer
+scope, exit-time focus excerpts, exclusions and disablement. Profiling verifies
+that reads, writes and buffer navigation make no helper calls.
 They also verify that the first filename labels the directory and stays
 unchanged after another file is opened.
 
@@ -84,8 +91,10 @@ in the tests. The corrected Windows tests still need a CI rerun.
 
 - Choose a repository license and confirm rights to the existing source.
 - Complete native platform checks and review the supported host versions.
-- Keep the My Big Brother source adapter compatible with checkpoint fields.
-- Exercise storage v2 day rollover and deletion tests on every supported host.
+- Keep the My Big Brother source adapter compatible with whole sessions
+  discovered across opening-date directories. Historical checkpoint records
+  can still be read, but must not define new recording behavior.
+- Exercise midnight session continuity and deleted-date tests on every host.
   The protocol implementation in `python/storage.py` is a vendored copy of
   My Big Brother's standard-library `my_big_brother/storage.py`.
 

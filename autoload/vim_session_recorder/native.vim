@@ -11,10 +11,11 @@ endfunction
 
 function! vim_session_recorder#native#Call(request) abort
     let l:user = get(g:, 'vim_session_recorder#config', {})
-    let l:timeout = get(l:user, 'helper_timeout_ms', 30000)
-    if type(l:timeout) != v:t_number || l:timeout <= 0
+    if has_key(l:user, 'helper_timeout_ms')
+                \ && (type(l:user.helper_timeout_ms) != v:t_number || l:user.helper_timeout_ms <= 0)
         throw 'helper_timeout_ms must be a positive integer'
     endif
+    let l:timeout = get(l:user, 'helper_timeout_ms', -1)
     let l:python = get(l:user, 'python_executable', '')
     if empty(l:python)
         for l:name in ['python3', 'python', 'py']
@@ -56,7 +57,7 @@ function! vim_session_recorder#native#Call(request) abort
         let l:started = reltime()
         while job_status(l:job) ==# 'run' || ch_status(l:channel, {'part': 'out'}) ==# 'buffered'
             sleep 10m
-            if reltimefloat(reltime(l:started)) * 1000 > l:timeout
+            if l:timeout >= 0 && reltimefloat(reltime(l:started)) * 1000 > l:timeout
                 call job_stop(l:job, 'kill')
                 throw 'Python recorder helper timed out'
             endif

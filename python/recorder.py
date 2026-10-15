@@ -2,12 +2,13 @@
 
 import difflib
 import errno
-import fnmatch
 import json
 import os
 from pathlib import Path
 import re
 import stat
+import shutil
+import subprocess
 import sys
 import tempfile
 from datetime import datetime
@@ -20,7 +21,7 @@ _spec.loader.exec_module(storage)
 
 
 def now():
-    return datetime.now().astimezone().isoformat(timespec="seconds")
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
 def platform_paths(system=None, home=None, environ=None):
@@ -65,7 +66,7 @@ def configure(config):
         raise ValueError("max_file_size must be a positive integer")
     patterns = config.get("exclude_patterns", ["*.tmp", "*.log", ".git/*"])
     if not isinstance(patterns, list) or any(not isinstance(p, str) for p in patterns):
-        raise ValueError("exclude_patterns must be a list of glob strings")
+        raise ValueError("exclude_patterns must be a list of Vim regular expressions")
     return {"root": str(root), "path_source": origin,
             "storage_settings": layout.settings if layout else None, "storage_version": 2 if layout else 1,
             "standalone": bool(override), "max_file_size": size,
@@ -76,14 +77,6 @@ def configured_layout(config):
     layout = storage.Layout(config['storage_settings'])
     layout.check()
     return layout
-
-
-def excluded(path, config):
-    normalized = str(path).replace("\\", "/")
-    parts = normalized.split("/")
-    candidates = ["/".join(parts[i:]) for i in range(len(parts))] + parts
-    return any(fnmatch.fnmatchcase(value, pattern)
-               for pattern in config["exclude_patterns"] for value in candidates)
 
 
 def file_label(filename):
@@ -129,63 +122,56 @@ def start(config, first_file=""):
             label = ""
     session = {"session_id": session_id, "vim_start": timestamp, "directory": str(directory)}
     if layout is not None:
-        session.update(calendar_date=day, workspace_id=layout.record(day)["workspace_id"],
-                       root_session_id=session_id)
+        session.update(calendar_date=day, workspace_id=layout.record(day)["workspace_id"])
     return session
 
 
 def read_text_bytes(path, limit):
-    # Bound reads even if the file grows after stat().
+    # Bound opening snapshots even if a file grows after stat().
     with path.open("rb") as stream:
         data = stream.read(limit)
     if len(data) >= limit:
         return None, "too_large"
-    if b"\0" in data:
+    if b"\0" in data and not data.startswith((b"\xff\xfe", b"\xfe\xff")):
         return None, "binary"
-    try:
-        data.decode("utf-8")
-    except UnicodeDecodeError:
-        return None, "non_utf8"
     return data, ""
 
 
 def capture(path, file_id, directory, config):
+    """Byte-preserving backend capture. Vim applies its own regexp exclusions."""
     if config.get("storage_version") == 2:
         layout = configured_layout(config)
         day = Path(directory).parent.parent.name
-        record = layout.record(day)
-        if not record or record["disposition"] == "discarded":
+        state = layout.record(day)
+        if not state or state["disposition"] == "discarded":
             return None
     path = absolute(path)
-    if excluded(path, config) or excluded(path.resolve(), config) or path.is_dir():
+    if not path.exists() or path.is_dir():
         return None
     record = {"id": file_id, "path": str(path), "opened": now()}
-    if config.get("storage_version") == 2:
-        record["day_checkpoint"] = True
     resolved = path.resolve()
     if resolved != path:
         record["resolved_path"] = str(resolved)
     try:
-        if not path.exists():
-            record["new_file"] = True
-            data, reason = b"", ""
-        else:
-            info = path.stat()
+        info = path.stat()
+        if not stat.S_ISREG(info.st_mode):
+            record["snapshot_status"] = "unsupported_file"
+            return record
+        if info.st_size >= config["max_file_size"]:
             record["size"] = info.st_size
-            if not stat.S_ISREG(info.st_mode):
-                record["snapshot_status"] = "unsupported_file"
-                return record
+            data, reason = None, "too_large"
+        else:
             data, reason = read_text_bytes(path, config["max_file_size"])
         if reason:
             record["snapshot_status"] = reason
             if reason == "binary":
                 record["is_binary"] = True
         else:
-            suffix = path.suffix
-            if not re.fullmatch(r"\.[A-Za-z0-9_-]{1,16}", suffix):
-                suffix = ".txt"
+            suffix = re.sub(r'[<>:"/\\|?*\x00-\x1f\x7f]', "_", path.suffix).rstrip(" .") or ".txt"
             filename = f"{file_id}-original{suffix}"
-            (Path(directory) / filename).write_bytes(data)
+            snapshot = Path(directory) / filename
+            snapshot.write_bytes(data)
+            shutil.copymode(path, snapshot)
             record["original_file"] = filename
             record["snapshot_status"] = "ok"
     except OSError as exc:
@@ -194,57 +180,122 @@ def capture(path, file_id, directory, config):
     return record
 
 
-def unified(original, current, old_name, new_name):
-    lines = list(difflib.diff_bytes(difflib.unified_diff,
-                 original.splitlines(keepends=True), current.splitlines(keepends=True),
-                 fromfile=old_name.encode("utf-8"), tofile=new_name.encode("utf-8")))
-    # difflib leaves unterminated input lines unterminated, unlike diff -u.
-    output = []
-    for line in lines:
-        output.append(line)
-        if not line.endswith(b"\n"):
+def lf_lines(data):
+    """Split exactly as diff does: CR is content, only LF terminates a line."""
+    lines = data.split(b"\n")
+    return [line + b"\n" for line in lines[:-1]] + ([lines[-1]] if lines[-1] else [])
+
+
+def diff_counts(content):
+    lines = content.split(b"\n")
+    return (sum(line.startswith(b"+") for line in lines[2:]),
+            sum(line.startswith(b"-") for line in lines[2:]))
+
+
+def unified_fallback(original, current, old_name, new_name):
+    """Portable LF-based unified diff without SequenceMatcher's autojunk loss."""
+    old, new = lf_lines(original), lf_lines(current)
+    begin = 0
+    while begin < min(len(old), len(new)) and old[begin] == new[begin]:
+        begin += 1
+    if begin == len(old) == len(new):
+        return b"", 0, 0
+    end = 0
+    while (end < min(len(old), len(new)) - begin
+           and old[len(old) - end - 1] == new[len(new) - end - 1]):
+        end += 1
+    # Keep context but avoid quadratic matching over an unchanged repetitive file.
+    offset = max(0, begin - 3)
+    old_end, new_end = min(len(old), len(old) - end + 3), min(len(new), len(new) - end + 3)
+    matcher = difflib.SequenceMatcher(None, old[offset:old_end], new[offset:new_end], autojunk=False)
+    output = [b"--- " + old_name.encode("utf-8") + b"\n",
+              b"+++ " + new_name.encode("utf-8") + b"\n"]
+    added = deleted = 0
+
+    def line(prefix, content):
+        output.append(prefix + content)
+        if not content.endswith(b"\n"):
             output.append(b"\n\\ No newline at end of file\n")
-    added = sum(line.startswith(b"+") for line in lines[2:])
-    deleted = sum(line.startswith(b"-") for line in lines[2:])
+
+    def region(start, stop):
+        size = stop - start
+        return str(start if size == 0 else start + 1) + ("," + str(size) if size != 1 else "")
+
+    for group in matcher.get_grouped_opcodes(3):
+        first, last = group[0], group[-1]
+        header = "@@ -" + region(first[1] + offset, last[2] + offset)
+        header += " +" + region(first[3] + offset, last[4] + offset) + " @@\n"
+        output.append(header.encode("ascii"))
+        for tag, i1, i2, j1, j2 in group:
+            if tag == "equal":
+                for value in old[i1 + offset:i2 + offset]:
+                    line(b" ", value)
+            else:
+                if tag in ("replace", "delete"):
+                    for value in old[i1 + offset:i2 + offset]:
+                        line(b"-", value)
+                    deleted += i2 - i1
+                if tag in ("replace", "insert"):
+                    for value in new[j1 + offset:j2 + offset]:
+                        line(b"+", value)
+                    added += j2 - j1
     return b"".join(output), added, deleted
 
 
-def finalize_file(record, directory, limit):
+def system_diff(original_path, current_path, old_name, new_name, labels=True):
+    executable = shutil.which("diff")
+    if not executable:
+        return None
+    arguments = [executable, "-u"]
+    if labels:
+        arguments.extend(["-L", old_name, "-L", new_name])
+    arguments.extend([str(original_path), str(current_path)])
+    result = subprocess.run(arguments, capture_output=True)
+    if result.returncode not in (0, 1):
+        raise OSError(result.stderr.decode("utf-8", errors="replace").strip() or "diff failed")
+    return (result.stdout,) + diff_counts(result.stdout)
+
+
+def unified(original, current, old_name, new_name):
+    if shutil.which("diff"):
+        with tempfile.TemporaryDirectory(prefix="recorder-diff-") as temporary:
+            root = Path(temporary)
+            old, new = root / "original", root / "current"
+            old.write_bytes(original)
+            new.write_bytes(current)
+            return system_diff(old, new, old_name, new_name)
+    return unified_fallback(original, current, old_name, new_name)
+
+
+def finalize_file(record, directory):
     if record.get("snapshot_status") != "ok":
         record["diff_generated"] = False
         return
-    record.pop("diff_status", None)
-    record.pop("error", None)
+    original_path = directory / record["original_file"]
     path = Path(record["path"])
+    # The opening byte limit does not restrict exit comparisons.
     if path.exists():
-        current, reason = read_text_bytes(path, limit)
-        if reason:
-            record["diff_generated"] = False
-            record["diff_status"] = reason
-            return
-        new_name = str(path)
+        result = system_diff(original_path, path, record["original_file"], str(path), labels=False)
     else:
-        current, new_name = b"", "/dev/null"
-    original = (directory / record["original_file"]).read_bytes()
-    if record.get('day_checkpoint'):
-        checkpoint_file = str(record['id']) + '-checkpoint.txt'
-        (directory / checkpoint_file).write_bytes(current)
-        record['checkpoint_file'] = checkpoint_file
-    content, added, deleted = unified(original, current,
-                                      record["original_file"], new_name)
-    record["modified"] = original != current
+        result = None
+    if result is None:
+        original = original_path.read_bytes()
+        current = path.read_bytes() if path.exists() else b""
+        new_name = str(path) if path.exists() else "/dev/null"
+        content, added, deleted = unified_fallback(original, current,
+                                                   record["original_file"], new_name)
+        record["modified"] = original != current
+    else:
+        content, added, deleted = result
+        record["modified"] = bool(content)
     record["diff_generated"] = True
     if content:
         filename = f"{record['id']}-modification.diff"
         (directory / filename).write_bytes(content)
         record.update(diff_file=filename, lines_added=added, lines_deleted=deleted)
-    elif "diff_file" in record:
-        (directory / record.pop("diff_file")).write_bytes(b"")
-        record.pop("lines_added", None)
-        record.pop("lines_deleted", None)
 
 
-def finalize(session, files, config, *, checkpoint=False):
+def finalize(session, files, config):
     directory = Path(session["directory"])
     if config.get("storage_version") == 2:
         layout = configured_layout(config)
@@ -255,20 +306,16 @@ def finalize(session, files, config, *, checkpoint=False):
     for record in files:
         focus = record.get("last_focus_line", {})
         if "time_epoch" in focus:
-            focus["time"] = datetime.fromtimestamp(focus.pop("time_epoch")).astimezone().isoformat()
+            focus["time"] = datetime.fromtimestamp(focus.pop("time_epoch")).strftime("%Y-%m-%d %H:%M:%S")
         try:
-            finalize_file(record, directory, config["max_file_size"])
+            finalize_file(record, directory)
         except (OSError, ValueError) as exc:
             record["diff_generated"] = False
             record["error"] = str(exc)
     payload = {"schema_version": 1, "source": "vim", "session_id": session["session_id"],
                "vim_start": session["vim_start"], "vim_close": now(), "opened_files": files}
     if config.get("storage_version") == 2:
-        payload.update(storage_version=2, calendar_date=session["calendar_date"],
-                       root_session_id=session["root_session_id"], segment_open=checkpoint,
-                       diff_scope="Independent calendar-date segment through the recorded checkpoint")
-        if session.get("boundary_gap"):
-            payload["boundary_gap"] = session["boundary_gap"]
+        payload.update(storage_version=2, calendar_date=session["calendar_date"])
     # A reader sees either the previous complete file or the new complete file.
     with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=directory,
                                      prefix="record-", suffix=".tmp", delete=False) as stream:
@@ -281,53 +328,6 @@ def finalize(session, files, config, *, checkpoint=False):
                           for record in files)}
 
 
-def checkpoint(session, files, config):
-    """Persist a day-local checkpoint or begin an independent later-day segment.
-
-    On a delayed rollover, retain the last prior-day checkpoint. Never read
-    today's disk bytes and attribute their changes to a closed earlier day.
-    """
-    if config.get("storage_version") != 2:
-        return {"session": session, "files": files}
-    layout = configured_layout(config)
-    current = now()
-    day = current[:10]
-    if day == session["calendar_date"]:
-        result = finalize(session, files, config, checkpoint=True)
-        return {"session": session, "files": files, "discarded": result.get("discarded", False)}
-    old_record = Path(session["directory"]) / "record.json"
-    prior = layout.record(session["calendar_date"])
-    if old_record.exists() and prior and prior["disposition"] != "discarded":
-        payload = storage.read_json(old_record)
-        payload.update(segment_open=False, rollover_observed_at=current,
-                       boundary_gap="Changes after the last checkpoint and before rollover are not attributed")
-        storage.write_json(old_record, payload)
-    try:
-        following = start(config, files[0]["path"] if files else "")
-    except storage.DiscardedDay:
-        return {"session": session, "files": files, "discarded": True}
-    following["root_session_id"] = session["root_session_id"]
-    following["boundary_gap"] = "No observation between the last prior-day checkpoint and this segment baseline"
-    refreshed = []
-    for old in files:
-        item = capture(old["path"], len(refreshed) + 1, following["directory"], config)
-        if item is not None:
-            item.update(continued=True, original_opened=old.get("original_opened", old["opened"]))
-            prior_snapshot = Path(session['directory']) / old.get('checkpoint_file', '__missing__')
-            if item.get('original_file') and prior_snapshot.is_file():
-                previous = prior_snapshot.read_bytes()
-                latest = (Path(following['directory']) / item['original_file']).read_bytes()
-                bridge, _, _ = unified(previous, latest, 'previous-checkpoint', item['original_file'])
-                if bridge:
-                    name = str(item['id']) + '-boundary.diff'
-                    (Path(following['directory']) / name).write_bytes(bridge)
-                    item.update(boundary_diff_file=name,
-                                boundary_diff_scope='Cross-boundary observed difference, not attributable to this day alone')
-            refreshed.append(item)
-    finalize(following, refreshed, config, checkpoint=True)
-    return {"session": following, "files": refreshed, "rotated": True}
-
-
 def dispatch(request):
     action = request["action"]
     if action == "configure":
@@ -338,12 +338,7 @@ def dispatch(request):
         return capture(request["path"], request["file_id"],
                        request["directory"], request["config"])
     if action == "finalize":
-        if request["config"].get("storage_version") == 2:
-            value = checkpoint(request["session"], request["files"], request["config"])
-            return finalize(value["session"], value["files"], request["config"])
         return finalize(request["session"], request["files"], request["config"])
-    if action == "checkpoint":
-        return checkpoint(request["session"], request["files"], request["config"])
     raise ValueError("Unknown recorder action")
 
 

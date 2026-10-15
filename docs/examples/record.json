@@ -2,14 +2,13 @@
   "schema_version": 1,
   "source": "vim",
   "session_id": "a1b2c3d4a1b2c3d4a1b2c3d4a1b2c3d4",
-  "vim_start": "2026-01-15T09:00:00+08:00",
-  "vim_close": "2026-01-15T09:10:00+08:00",
+  "vim_start": "2026-01-15 09:00:00",
+  "vim_close": "2026-01-15 09:10:00",
   "opened_files": [
     {
       "id": 1,
       "path": "/projects/demo/main.py",
-      "opened": "2026-01-15T09:00:00+08:00",
-      "size": 32,
+      "opened": "2026-01-15 09:00:00",
       "snapshot_status": "ok",
       "original_file": "1-original.py",
       "modified": true,
@@ -20,7 +19,7 @@
       "last_focus_line": {
         "location": 2,
         "cursor_col": 1,
-        "time": "2026-01-15T09:09:00+08:00",
+        "time": "2026-01-15 09:09:00",
         "contents": "print('hello')"
       }
     }

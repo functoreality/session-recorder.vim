@@ -1,6 +1,7 @@
 let s:session = {}
 let s:files = []
 let s:paths = {}
+let s:file_counter = 0
 
 function! s:PathKey(path) abort
     let l:path = substitute(a:path, '\\', '/', 'g')
@@ -15,35 +16,30 @@ function! vim_session_recorder#session#HasPath(path) abort
     return has_key(s:paths, s:PathKey(a:path))
 endfunction
 
-function! vim_session_recorder#session#StartSession(first_file) abort
+function! vim_session_recorder#session#StartSession(...) abort
     let s:session = vim_session_recorder#native#Call({'action': 'start',
-                \ 'first_file': a:first_file,
+                \ 'first_file': a:0 ? a:1 : expand('%:p'),
                 \ 'config': vim_session_recorder#config#GetConfig()})
     let s:files = []
     let s:paths = {}
+    let s:file_counter = 0
 endfunction
 
 function! vim_session_recorder#session#GetSessionDir() abort
     return get(s:session, 'directory', '')
 endfunction
 
-function! vim_session_recorder#session#GetNextFileId() abort
-    return len(s:files) + 1
+function! vim_session_recorder#session#GetStartTime() abort
+    return get(s:session, 'vim_start', '')
 endfunction
 
-function! vim_session_recorder#session#Checkpoint() abort
-    if empty(s:session) || get(vim_session_recorder#config#GetConfig(), 'storage_version', 1) != 2
-        return
-    endif
-    let l:result = vim_session_recorder#native#Call({'action': 'checkpoint',
-                \ 'session': s:session, 'files': s:files,
-                \ 'config': vim_session_recorder#config#GetConfig()})
-    let s:session = l:result.session
-    let s:files = l:result.files
-    let s:paths = {}
-    for l:index in range(len(s:files))
-        let s:paths[s:PathKey(s:files[l:index].path)] = l:index
-    endfor
+function! vim_session_recorder#session#GetFileRecords() abort
+    return s:files
+endfunction
+
+function! vim_session_recorder#session#GetNextFileId() abort
+    let s:file_counter += 1
+    return s:file_counter
 endfunction
 
 function! vim_session_recorder#session#AddFileRecord(record) abort
@@ -53,23 +49,11 @@ endfunction
 
 function! vim_session_recorder#session#UpdateFileFocus(path) abort
     let l:key = s:PathKey(a:path)
-    if !has_key(s:paths, l:key)
-        return
+    if has_key(s:paths, l:key)
+        let s:files[s:paths[l:key]].last_focus_line = {
+                    \ 'location': line('.'), 'cursor_col': col('.'),
+                    \ 'time': strftime('%Y-%m-%d %H:%M:%S')}
     endif
-    let l:record = s:files[s:paths[l:key]]
-    let l:focus = {'location': line('.'), 'cursor_col': col('.')}
-    " Python formats the event epoch with an offset when finalizing the record.
-    let l:focus.time_epoch = localtime()
-    if get(l:record, 'snapshot_status', '') ==# 'ok'
-        let l:contents = getline('.')
-        if strchars(l:contents) < 100
-            let l:focus.contents = l:contents
-        else
-            let l:focus.head = strcharpart(l:contents, 0, 30)
-            let l:focus.tail = strcharpart(l:contents, strchars(l:contents) - 30, 30)
-        endif
-    endif
-    let l:record.last_focus_line = l:focus
 endfunction
 
 " Retained for existing user mappings. This records a claim, not execution proof.
@@ -81,6 +65,9 @@ function! vim_session_recorder#session#RecordFileExecution(path) abort
 endfunction
 
 function! vim_session_recorder#session#EndSession() abort
+    for l:record in s:files
+        call vim_session_recorder#recorder#ProcessLastFocusLine(l:record)
+    endfor
     let l:result = vim_session_recorder#native#Call({'action': 'finalize',
                 \ 'session': s:session, 'files': s:files,
                 \ 'config': vim_session_recorder#config#GetConfig()})
