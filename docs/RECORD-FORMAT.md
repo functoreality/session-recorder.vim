@@ -21,7 +21,7 @@ explicit UTC offset. Readers must apply their configured local timezone and
 report that assumption. Existing offset-bearing ISO records remain historical
 input that a reader may support.
 
-Shared storage uses
+All configured recording roots use
 `daily/YYYY-MM-DD/vim/HH-MM-SS_<first-file>_<short-id>/`.
 `first-file` is a browsing hint from the initial named buffer. Unicode is
 preserved and Windows-invalid characters become `_`. Stems longer than
@@ -33,8 +33,7 @@ Leading/trailing spaces and periods are trimmed.
 full identifier. A missing hint or a name/path-length error falls back to
 `HH-MM-SS_<short-id>`. Other creation errors are reported normally.
 Directory creation is exclusive. A collision generates another ID and retries.
-Standalone `record_dir` uses `<record_dir>/YYYY-MM-DD/<session>/`.
-Both layouts keep the local **session-start date**, even after midnight.
+The local **session-start date** remains fixed, even after midnight.
 The directory name is a browsing aid, not a source of machine-readable paths.
 
 ## Files and artifacts
@@ -57,9 +56,9 @@ Optional `resolved_path` identifies a symlink target.
 | `ok` | The original disk bytes were copied |
 | `too_large` | The opening file reached the configured byte limit |
 | `binary` | Contains NUL without a UTF-16 BOM, also has `is_binary: true` |
-| `unsupported_file` | Not a regular disk file |
 | `error` | Read or copy failed, see `error` |
 
+Non-regular files such as devices and named pipes are skipped.
 Snapshots are byte copies, including non-UTF-8 text and UTF-16 BOM text.
 Their bytes and original baseline are never refreshed during the session.
 Snapshot permissions retain the source permissions where supported.
@@ -109,12 +108,12 @@ no next-day segments, and no checkpoint/boundary artifacts.
 A crash can leave originals without a final record. Temporary `record-*.tmp`
 files are not completed records. There is no separate daemon.
 
-`storage_version: 2` and `calendar_date` describe the shared storage layout
-and the opening date. They do not change the version 1 whole-session meaning.
-`C/storage.json` remains optional, and platform defaults work independently of
-My Big Brother. The shared registry is checked before final publication.
-If the opening date was deleted or discarded, the session is not recreated
-or redirected to a later date. Standalone `record_dir` bypasses that registry.
+The root is resolved once at startup: explicit `record_dir`, then the UTF-8
+single-path `C/raw-logs-path.txt`, then the platform data directory's `daily`.
+The locator is not reread during the session. There is no storage registry,
+`storage.json` dependency, managed/standalone mode, or directory migration.
+If the existing session folder is removed, final publication fails without
+recreating or redirecting it. No storage-version or workspace fields are emitted.
 
 A reader must discover completed sessions across date directories, then select
 overlapping `[vim_start, vim_close]` intervals. Scanning only the requested
@@ -127,7 +126,7 @@ earlier activity after a review. Readers must describe those limitations.
 
 The reader contract is to:
 
-1. Register an explicitly enabled `vim` source using the shared capture root.
+1. Enable `vim` explicitly and point its source root at the same recording root.
 2. Discover whole sessions across dates, validate version 1 JSON and report
    malformed records, missing artifacts and unsupported formats as gaps.
 3. Preserve artifact references and treat recorded content as evidence,
@@ -135,7 +134,8 @@ The reader contract is to:
 4. Explain session aggregates, local-time assumptions, unsaved focus excerpts,
    external disk edits, late publication and optional execution claims.
 5. Test midnight sessions, older opening-date directories, missing originals,
-   discarded dates and disabled-source behavior.
+   removed session folders and disabled-source behavior.
 
-Keep the editor collector independently installable. A shared path does not
-require checkpoint publication or independent day segments.
+Readers use only `<root>/YYYY-MM-DD/vim/<session>/record.json`. They do not
+search old flat layouts, `root/vim`, or alternative roots. The editor collector
+remains independently installable.

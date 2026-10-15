@@ -26,8 +26,6 @@ class RecorderTests(unittest.TestCase):
         self.root = Path(self.temporary.name)
         self.config_dir = self.root / "configs"
         self.data_dir = self.root / "data"
-        self.config_dir.mkdir()
-        recorder.storage.Layout.install(self.config_dir, self.data_dir)
         self.paths = mock.patch.object(
             recorder, "platform_paths", return_value=(self.config_dir, self.data_dir)
         )
@@ -42,8 +40,23 @@ class RecorderTests(unittest.TestCase):
         session = recorder.start(config)
         return config, session, Path(session["directory"])
 
-    def capture(self, path, directory, config, number=1):
-        return recorder.capture(str(path), number, str(directory), config)
+    def record_fixture(self, path, directory, number=1):
+        # A host-produced snapshot/manifest entry for backend-only comparison tests.
+        filename = str(number) + "-original.txt"
+        (directory / filename).write_bytes(path.read_bytes())
+        return {"id": number, "path": str(path), "opened": recorder.now(),
+                "snapshot_status": "ok", "original_file": filename}
+
+    def compare(self, original, current, fallback):
+        if fallback or not shutil.which("diff"):
+            return recorder.unified_fallback(original, current, "a/sample.txt", "b/sample.txt")
+        old, new = self.root / "diff-original", self.root / "diff-current"
+        old.write_bytes(original)
+        new.write_bytes(current)
+        content, added, deleted = recorder.system_diff(old, new)
+        # Test patch application independently of platform-specific path/time headers.
+        body = content.split(b"\n", 2)[2]
+        return b"--- a/sample.txt\n+++ b/sample.txt\n" + body, added, deleted
 
     def test_platform_paths(self):
         # Call the original function while configure() uses isolated paths.
@@ -77,31 +90,41 @@ class RecorderTests(unittest.TestCase):
             "win32", home, {"LOCALAPPDATA": str(self.root / "local-appdata")}
         ), (base / "configs", base / "data"))
 
-    def test_default_and_standalone_roots(self):
+    def test_default_and_explicit_roots_use_the_same_layout(self):
         self.assertEqual(self.config()["root"], str(self.data_dir / "daily"))
-        target = self.root / "standalone"
-        config, session, directory = self.session(record_dir=str(target))
-        self.assertTrue(config["standalone"])
-        self.assertEqual(directory.parent, target / session['vim_start'][:10])
-        self.assertEqual(session["session_id"][:8], directory.name.rsplit("_", 1)[-1])
-
-    def test_shared_storage_preserves_unicode_and_spaces(self):
         target = self.root / "记录 space"
-        custom = self.root / "custom-config"
-        recorder.storage.Layout.install(custom, target)
-        with mock.patch.object(recorder, 'platform_paths', return_value=(custom, target)):
-            config = self.config()
-        self.assertEqual(config['root'], str(target / 'daily'))
-        self.assertEqual(config['path_source'], str(custom / 'storage.json'))
-
-    def test_missing_shared_config_uses_defaults_and_invalid_config_is_reported(self):
-        shared = self.config_dir / 'storage.json'
-        shared.rename(self.config_dir / 'saved-storage.json')
-        self.assertEqual(self.config()['root'], str(self.data_dir / 'daily'))
-        self.assertFalse(shared.exists())
-        shared.write_text('{broken')
+        config, session, directory = self.session(record_dir=str(target))
+        self.assertEqual(directory.parent, target / session['vim_start'][:10] / "vim")
+        self.assertEqual(config["path_source"], "record_dir")
+        self.assertEqual(session["session_id"][:8], directory.name.rsplit("_", 1)[-1])
         with self.assertRaises(ValueError):
-            self.config()
+            self.config(record_dir="relative")
+
+
+
+    def test_locator_priority_and_utf8_path(self):
+        self.config_dir.mkdir()
+        locator = self.config_dir / "raw-logs-path.txt"
+        target = self.root / "记录 space "
+        for ending in (b"", b"\n", b"\r\n"):
+            locator.write_bytes(str(target).encode("utf-8") + ending)
+            config = self.config()
+            self.assertEqual(config["root"], str(target))
+            self.assertEqual(config["path_source"], str(locator))
+        with mock.patch.object(Path, "read_bytes", side_effect=AssertionError("Override wins")):
+            config = self.config(record_dir=str(self.root / "override"))
+        self.assertEqual(config["root"], str(self.root / "override"))
+
+    def test_storage_json_is_ignored_and_bad_locator_is_reported(self):
+        self.config_dir.mkdir()
+        (self.config_dir / "storage.json").write_text("{broken")
+        self.assertEqual(self.config()["root"], str(self.data_dir / "daily"))
+        self.assertFalse(self.data_dir.exists())
+        locator = self.config_dir / "raw-logs-path.txt"
+        for value in (b"", b"relative", b"/path\n/second", b"/path\n\n"):
+            locator.write_bytes(value)
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                self.config()
 
     def test_same_second_sessions_have_unique_directories(self):
         with mock.patch.object(recorder, "now", return_value="2026-10-14T23:59:59+08:00"):
@@ -189,22 +212,16 @@ class RecorderTests(unittest.TestCase):
             with self.assertRaises(PermissionError):
                 recorder.start(config, str(self.root / "notes.md"))
 
-    def test_capture_leaves_exclusions_to_vim_and_skips_missing_files(self):
-        config, _, directory = self.session()
-        source = self.root / "ignored.log"
-        source.write_bytes(b"caller already applied Vim regexp exclusions\n")
-        self.assertEqual(self.capture(source, directory, config)["snapshot_status"], "ok")
-        self.assertIsNone(self.capture(self.root, directory, config))
-        self.assertIsNone(self.capture(self.root / "missing.txt", directory, config))
+
 
     def test_deleted_file(self):
         config, session, directory = self.session()
         source = self.root / "deleted.txt"
         source.write_bytes(b"one\ntwo\n")
-        record = self.capture(source, directory, config)
+        record = self.record_fixture(source, directory)
         # Move the source away to simulate deletion without discarding evidence.
         source.rename(self.root / "deleted-backup.txt")
-        recorder.finalize(session, [record], config)
+        recorder.finalize(session, [record])
         self.assertEqual(record["lines_deleted"], 2)
         self.assertEqual(record["lines_added"], 0)
         self.assertIn(b"+++ /dev/null\n", (directory / record["diff_file"]).read_bytes())
@@ -213,8 +230,8 @@ class RecorderTests(unittest.TestCase):
         config, session, directory = self.session()
         source = self.root / "中文 notes.txt"
         source.write_bytes("相同内容\n".encode("utf-8"))
-        record = self.capture(source, directory, config)
-        summary = recorder.finalize(session, [record], config)
+        record = self.record_fixture(source, directory)
+        summary = recorder.finalize(session, [record])
         payload = json.loads(Path(summary["record"]).read_text(encoding="utf-8"))
         self.assertEqual(payload["schema_version"], 1)
         self.assertEqual(payload["source"], "vim")
@@ -245,8 +262,7 @@ class RecorderTests(unittest.TestCase):
                 directory.mkdir()
                 target = directory / "sample.txt"
                 target.write_bytes(original)
-                compare = recorder.unified_fallback if fallback else recorder.unified
-                content, added, deleted = compare(original, current, "a/sample.txt", "b/sample.txt")
+                content, added, deleted = self.compare(original, current, fallback)
                 patch = directory / "changes.patch"
                 patch.write_bytes(content)
                 applied = subprocess.run(
@@ -259,23 +275,15 @@ class RecorderTests(unittest.TestCase):
                 self.assertEqual(added, int(bool(current)))
                 self.assertEqual(deleted, int(bool(original)))
 
-    def test_binary_and_large_opening_inputs(self):
-        config, session, directory = self.session(max_file_size=8)
-        records = []
-        for index, (content, expected) in enumerate([
-            (b"a\0b", "binary"), (b"12345678", "too_large")
-        ], 1):
-            with self.subTest(expected=expected):
-                source = self.root / f"input-{index}.txt"
-                source.write_bytes(content)
-                record = self.capture(source, directory, config, index)
-                records.append(record)
-                self.assertEqual(record["snapshot_status"], expected)
-                self.assertNotIn("original_file", record)
-        recorder.finalize(session, records, config)
+    def test_records_without_an_original_are_not_compared(self):
+        config, session, directory = self.session()
+        records = [{"id": 1, "path": str(self.root / "binary.bin"), "snapshot_status": "binary"},
+                   {"id": 2, "path": str(self.root / "large.txt"), "snapshot_status": "too_large"}]
+        recorder.finalize(session, records)
         self.assertTrue(all(not record["diff_generated"] for record in records))
+        self.assertEqual(list(directory.glob("*.diff")), [])
 
-    def test_non_utf8_and_utf16_snapshots_preserve_original_bytes(self):
+    def test_non_utf8_and_utf16_comparison_keeps_original_bytes(self):
         config, session, directory = self.session()
         for index, (original, current) in enumerate([
             ("café\n".encode("latin1"), "café changed\n".encode("latin1")),
@@ -284,37 +292,25 @@ class RecorderTests(unittest.TestCase):
             with self.subTest(encoding=index):
                 source = self.root / f"encoded-{index}.txt"
                 source.write_bytes(original)
-                record = self.capture(source, directory, config, index)
+                record = self.record_fixture(source, directory, index)
                 self.assertEqual(record["snapshot_status"], "ok")
                 snapshot = directory / record["original_file"]
                 self.assertEqual(snapshot.read_bytes(), original)
                 source.write_bytes(current)
-                recorder.finalize(session, [record], config)
+                recorder.finalize(session, [record])
                 self.assertTrue(record["modified"])
                 self.assertTrue(record["diff_generated"])
                 self.assertEqual(snapshot.read_bytes(), original)
 
-    def test_snapshots_preserve_legal_extensions_and_executable_mode(self):
-        config, _, directory = self.session()
-        for index, filename in enumerate(["README", "notes.记录", "notes.abcdefghijklmnopq"], 1):
-            with self.subTest(filename=filename):
-                source = self.root / filename
-                source.write_bytes(b"snapshot\n")
-                source.chmod(0o750)
-                record = self.capture(source, directory, config, index)
-                expected = str(index) + "-original" + (source.suffix or ".txt")
-                self.assertEqual(record["original_file"], expected)
-                if os.name != "nt":
-                    self.assertEqual((directory / expected).stat().st_mode & 0o777, 0o750)
-                self.assertNotIn("size", record)
+
 
     def test_file_growing_past_opening_limit_still_gets_exit_diff(self):
         config, session, directory = self.session(max_file_size=8)
         source = self.root / "growing.txt"
         source.write_bytes(b"short")
-        record = self.capture(source, directory, config)
+        record = self.record_fixture(source, directory)
         source.write_bytes(b"long enough to exceed the limit")
-        summary = recorder.finalize(session, [record], config)
+        summary = recorder.finalize(session, [record])
         self.assertTrue(record["diff_generated"])
         self.assertTrue(record["modified"])
         self.assertEqual(record["lines_added"], 1)
@@ -328,8 +324,7 @@ class RecorderTests(unittest.TestCase):
         for original, current in cases:
             for fallback in (False, True):
                 with self.subTest(fallback=fallback, size=len(original)):
-                    compare = recorder.unified_fallback if fallback else recorder.unified
-                    content, added, deleted = compare(original, current, "old", "new")
+                    content, added, deleted = self.compare(original, current, fallback)
                     self.assertEqual((added, deleted), (1, 1))
                     self.assertIn(b"@@", content)
 
@@ -338,9 +333,9 @@ class RecorderTests(unittest.TestCase):
         config, session, directory = self.session()
         source = self.root / "header.txt"
         source.write_bytes(b"before\n")
-        record = self.capture(source, directory, config)
+        record = self.record_fixture(source, directory)
         source.write_bytes(b"after\n")
-        recorder.finalize(session, [record], config)
+        recorder.finalize(session, [record])
         lines = (directory / record["diff_file"]).read_bytes().split(b"\n")
         self.assertIn(str(directory / record["original_file"]).encode(), lines[0])
         self.assertIn(str(source).encode(), lines[1])
@@ -352,11 +347,11 @@ class RecorderTests(unittest.TestCase):
         for index in (1, 2):
             source = self.root / f"source-{index}.txt"
             source.write_bytes(b"before\n")
-            records.append(self.capture(source, directory, config, index))
+            records.append(self.record_fixture(source, directory, index))
             source.write_bytes(b"after\n")
         original = directory / records[0]["original_file"]
         original.rename(directory / "saved-original.txt")
-        summary = recorder.finalize(session, records, config)
+        summary = recorder.finalize(session, records)
         payload = json.loads(Path(summary["record"]).read_text(encoding="utf-8"))
         self.assertEqual(len(payload["opened_files"]), 2)
         self.assertFalse(records[0]["diff_generated"])

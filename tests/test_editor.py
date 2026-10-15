@@ -8,7 +8,6 @@ import subprocess
 import sys
 import tempfile
 import unittest
-import importlib.util
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -40,9 +39,9 @@ EDITORS = editors()
 
 @unittest.skipUnless(EDITORS, "A full Vim (+job/+channel) or Neovim is required")
 class EditorTests(unittest.TestCase):
-    def run_editor(self, actions, *, files=(), config="{}", shared_root=None,
-                   extra_env=None, line_ending=b"\n", invalid_storage=False,
-                   initialize=True, fixtures=None, split_files=False):
+    def run_editor(self, actions, *, files=(), config="{}", custom_root=False,
+                   extra_env=None, line_ending=b"\n", storage_contents=None, use_locator=False,
+                   fixtures=None, split_files=False):
         results = []
         for editor, nvim in EDITORS:
             with self.subTest(editor=editor), tempfile.TemporaryDirectory() as temporary:
@@ -67,15 +66,15 @@ class EditorTests(unittest.TestCase):
                     logs, config_dir = app / "data" / "daily", app / "configs"
                 else:
                     config_dir = base / "config" / "my-big-brother"
-                spec = importlib.util.spec_from_file_location('fixture_storage', ROOT / 'python/storage.py')
-                contract = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(contract)
-                data = base / 'custom root 中文' if shared_root == 'custom' else logs.parent
-                if initialize:
-                    layout = contract.Layout.install(config_dir, data)
-                    logs = layout.daily
-                if invalid_storage:
-                    (config_dir / 'storage.json').write_text('{broken')
+                if use_locator:
+                    logs = base / 'locator root 中文'
+                    config_dir.mkdir(parents=True, exist_ok=True)
+                    (config_dir / 'raw-logs-path.txt').write_text(str(logs), encoding='utf-8')
+                if custom_root:
+                    logs = base / 'custom root 中文'
+                if storage_contents is not None:
+                    config_dir.mkdir(parents=True, exist_ok=True)
+                    (config_dir / 'storage.json').write_text(storage_contents)
                 if extra_env:
                     env.update(extra_env)
                 config_file = base / "init.vim"
@@ -94,6 +93,10 @@ class EditorTests(unittest.TestCase):
                     "  qa!",
                     "endfunction",
                 ]
+                if use_locator:
+                    commands.insert(4, "let g:test_locator = " + vim_string(config_dir / "raw-logs-path.txt"))
+                if custom_root:
+                    commands.insert(4, "let g:vim_session_recorder#config.record_dir = " + vim_string(logs))
                 if nvim:
                     # Run after real VimEnter returns, so normal nested events fire.
                     commands.append("autocmd VimEnter * call timer_start(10, function('TestActions'))")
@@ -123,14 +126,14 @@ class EditorTests(unittest.TestCase):
 
     def test_independent_editor_records_without_shared_configuration(self):
         for result in self.run_editor(["call setline(1, 'independent')", 'write'],
-                                      files=['first.txt'], initialize=False):
+                                      files=['first.txt']):
             self.assertEqual(len(result['records']), 1)
             record = result['records'][0]
-            self.assertEqual(record['calendar_date'], record['vim_start'][:10])
+            self.assertTrue(result['paths'][0].startswith(record['vim_start'][:10] + '/vim/'))
             self.assertFalse(result['configuration_created'])
             self.assertTrue(record['opened_files'][0]['modified'])
 
-    def test_shared_storage_keeps_session_open_until_exit(self):
+    def test_session_publishes_only_at_exit(self):
         actions = [
             "let g:observations.before = filereadable(vim_session_recorder#session#GetSessionDir() . '/record.json')",
             "call setline(1, 'changed')", "write", "edit second.json",
@@ -140,13 +143,13 @@ class EditorTests(unittest.TestCase):
                                       files=['first.txt']):
             self.assertEqual(len(result['records']), 1)
             record = result['records'][0]
-            self.assertEqual(record['storage_version'], 2)
+            self.assertNotIn('storage_version', record)
             self.assertNotIn('segment_open', record)
             self.assertTrue(record['opened_files'][0]['modified'])
             self.assertEqual(result['observations'], {'before': 0, 'after': 0})
             self.assertNotIn('[vim-session-recorder]', result['messages'])
 
-    def test_storage_v2_deleted_active_fixture_does_not_recreate_date(self):
+    def test_removed_session_directory_is_not_recreated_or_redirected(self):
         actions = [
             "let daydir = fnamemodify(vim_session_recorder#session#GetSessionDir(), ':h:h')",
             "call rename(daydir, fnamemodify(daydir, ':h:h') . '/removed-day')",
@@ -154,7 +157,6 @@ class EditorTests(unittest.TestCase):
         ]
         for result in self.run_editor(actions, files=['first.txt']):
             self.assertEqual(result['records'], [])
-            self.assertNotIn('[vim-session-recorder]', result['messages'])
 
     def test_existing_edit_and_focus(self):
         for ending in (b"\n", b"\r\n"):
@@ -333,19 +335,39 @@ class EditorTests(unittest.TestCase):
             self.assertEqual(result['records'], [])
             self.assertIn('helper_timeout_ms must be a positive integer', result['messages'])
 
-    def test_shared_storage_and_json_text(self):
-        for result in self.run_editor([], files=["second.json"], shared_root="custom",
+    def test_explicit_root_and_json_text(self):
+        for result in self.run_editor([], files=["second.json"], custom_root=True,
                                       extra_env={"PYTHONIOENCODING": "cp1252"}):
             item = result["records"][0]["opened_files"][0]
             self.assertEqual(item["snapshot_status"], "ok")
             self.assertFalse(item["modified"])
             self.assertNotIn("is_binary", item)
 
-    def test_bad_storage_disables_without_breaking_editor(self):
-        for result in self.run_editor(["edit second.json"], files=["first.txt"], invalid_storage=True):
-            self.assertEqual(result["records"], [])
-            self.assertIn("[vim-session-recorder]", result["messages"])
-            self.assertNotIn("E716", result["messages"])
+    def test_locator_is_read_once_and_record_dir_overrides_it(self):
+        actions = [
+            "let initial = vim_session_recorder#session#GetSessionDir()",
+            "let replacement = vim_session_recorder#config#GetConfig().root . '-changed'",
+            "call writefile([replacement], g:test_locator)",
+            "let g:vim_session_recorder#config.record_dir = replacement",
+            "edit second.json",
+            "let g:observations.fixed = initial ==# vim_session_recorder#session#GetSessionDir()",
+            "let g:observations.path_source = vim_session_recorder#config#GetConfig().path_source",
+        ]
+        for override in (False, True):
+            for result in self.run_editor(actions, files=['first.txt'],
+                                          use_locator=True, custom_root=override):
+                self.assertEqual(len(result['records']), 1)
+                self.assertEqual(len(result['records'][0]['opened_files']), 2)
+                self.assertEqual(result['observations']['fixed'], 1)
+                source = result['observations']['path_source']
+                self.assertEqual(source == 'record_dir', override)
+                if not override:
+                    self.assertTrue(source.endswith('raw-logs-path.txt'))
+
+    def test_storage_json_is_ignored(self):
+        for result in self.run_editor(["edit second.json"], files=["first.txt"], storage_contents="{broken"):
+            self.assertEqual(len(result["records"]), 1)
+            self.assertNotIn("[vim-session-recorder]", result["messages"])
 
 
 if __name__ == "__main__":

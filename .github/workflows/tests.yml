@@ -16,7 +16,7 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - run: python -m unittest discover -s tests -p test_recorder.py -v
-      - run: python -m unittest discover -s tests -p test_storage_v2.py -v
+      - run: python -m unittest discover -s tests -p test_sessions.py -v
 
   editor:
     strategy:

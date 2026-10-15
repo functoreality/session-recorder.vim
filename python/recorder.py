@@ -6,18 +6,12 @@ import json
 import os
 from pathlib import Path
 import re
-import stat
 import shutil
 import subprocess
 import sys
 import tempfile
 from datetime import datetime
 from uuid import uuid4
-import importlib.util
-
-_spec = importlib.util.spec_from_file_location("mbb_storage", Path(__file__).with_name("storage.py"))
-storage = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(storage)
 
 
 def now():
@@ -32,8 +26,7 @@ def platform_paths(system=None, home=None, environ=None):
         base = home / "Library" / "Application Support" / "my-big-brother"
         return base / "configs", base / "data"
     if system == "win32":
-        base = Path(env.get("LOCALAPPDATA") or home / "AppData" / "Local")
-        base /= "my-big-brother"
+        base = Path(env.get("LOCALAPPDATA") or home / "AppData" / "Local") / "my-big-brother"
         return base / "configs", base / "data"
 
     def xdg(name, fallback):
@@ -41,7 +34,7 @@ def platform_paths(system=None, home=None, environ=None):
         return value if value.is_absolute() else fallback
 
     return (xdg("XDG_CONFIG_HOME", home / ".config") / "my-big-brother",
-            xdg("XDG_DATA_HOME", home / ".local" / "share") / "my-big-brother")
+            xdg("XDG_DATA_HOME", home / ".local/share") / "my-big-brother")
 
 
 def absolute(value):
@@ -53,14 +46,19 @@ def absolute(value):
 
 def configure(config):
     config_dir, data_dir = platform_paths()
+    locator = config_dir / "raw-logs-path.txt"
     override = config.get("record_dir", "")
-    layout = storage.Layout.for_collector(config_dir, data_dir) if not override else None
     if override:
-        root = absolute(override)
-        origin = "record_dir override (standalone, outside shared discovery)"
+        root, origin = absolute(override), "record_dir"
+    elif locator.exists():
+        value = locator.read_bytes().decode("utf-8")
+        if value.endswith("\r\n"):
+            value = value[:-2]
+        elif value.endswith("\n"):
+            value = value[:-1]
+        root, origin = absolute(value), str(locator)
     else:
-        root = layout.daily
-        origin = str(config_dir / "storage.json") if (config_dir / "storage.json").exists() else "platform default"
+        root, origin = data_dir / "daily", "platform default"
     size = config.get("max_file_size", 1048576)
     if type(size) is not int or size <= 0:
         raise ValueError("max_file_size must be a positive integer")
@@ -68,15 +66,7 @@ def configure(config):
     if not isinstance(patterns, list) or any(not isinstance(p, str) for p in patterns):
         raise ValueError("exclude_patterns must be a list of Vim regular expressions")
     return {"root": str(root), "path_source": origin,
-            "storage_settings": layout.settings if layout else None, "storage_version": 2 if layout else 1,
-            "standalone": bool(override), "max_file_size": size,
-            "exclude_patterns": patterns}
-
-
-def configured_layout(config):
-    layout = storage.Layout(config['storage_settings'])
-    layout.check()
-    return layout
+            "max_file_size": size, "exclude_patterns": patterns}
 
 
 def file_label(filename):
@@ -96,12 +86,7 @@ def start(config, first_file=""):
     timestamp = now()
     day = timestamp[:10]
     session_id = uuid4().hex
-    parent = Path(config["root"])
-    layout = configured_layout(config) if config.get("storage_version") == 2 else None
-    if layout is not None:
-        parent = layout.ensure_day(day) / "vim"
-    else:
-        parent = parent / day
+    parent = Path(config["root"]) / day / "vim"
     parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     clock = timestamp[11:19].replace(":", "-")
     label = file_label(Path(first_file).name) if first_file else ""
@@ -120,64 +105,7 @@ def start(config, first_file=""):
                              and getattr(exc, "winerror", None) not in (123, 206)):
                 raise
             label = ""
-    session = {"session_id": session_id, "vim_start": timestamp, "directory": str(directory)}
-    if layout is not None:
-        session.update(calendar_date=day, workspace_id=layout.record(day)["workspace_id"])
-    return session
-
-
-def read_text_bytes(path, limit):
-    # Bound opening snapshots even if a file grows after stat().
-    with path.open("rb") as stream:
-        data = stream.read(limit)
-    if len(data) >= limit:
-        return None, "too_large"
-    if b"\0" in data and not data.startswith((b"\xff\xfe", b"\xfe\xff")):
-        return None, "binary"
-    return data, ""
-
-
-def capture(path, file_id, directory, config):
-    """Byte-preserving backend capture. Vim applies its own regexp exclusions."""
-    if config.get("storage_version") == 2:
-        layout = configured_layout(config)
-        day = Path(directory).parent.parent.name
-        state = layout.record(day)
-        if not state or state["disposition"] == "discarded":
-            return None
-    path = absolute(path)
-    if not path.exists() or path.is_dir():
-        return None
-    record = {"id": file_id, "path": str(path), "opened": now()}
-    resolved = path.resolve()
-    if resolved != path:
-        record["resolved_path"] = str(resolved)
-    try:
-        info = path.stat()
-        if not stat.S_ISREG(info.st_mode):
-            record["snapshot_status"] = "unsupported_file"
-            return record
-        if info.st_size >= config["max_file_size"]:
-            record["size"] = info.st_size
-            data, reason = None, "too_large"
-        else:
-            data, reason = read_text_bytes(path, config["max_file_size"])
-        if reason:
-            record["snapshot_status"] = reason
-            if reason == "binary":
-                record["is_binary"] = True
-        else:
-            suffix = re.sub(r'[<>:"/\\|?*\x00-\x1f\x7f]', "_", path.suffix).rstrip(" .") or ".txt"
-            filename = f"{file_id}-original{suffix}"
-            snapshot = Path(directory) / filename
-            snapshot.write_bytes(data)
-            shutil.copymode(path, snapshot)
-            record["original_file"] = filename
-            record["snapshot_status"] = "ok"
-    except OSError as exc:
-        record["snapshot_status"] = "error"
-        record["error"] = str(exc)
-    return record
+    return {"session_id": session_id, "vim_start": timestamp, "directory": str(directory)}
 
 
 def lf_lines(data):
@@ -242,29 +170,16 @@ def unified_fallback(original, current, old_name, new_name):
     return b"".join(output), added, deleted
 
 
-def system_diff(original_path, current_path, old_name, new_name, labels=True):
+def system_diff(original_path, current_path):
     executable = shutil.which("diff")
     if not executable:
         return None
     arguments = [executable, "-u"]
-    if labels:
-        arguments.extend(["-L", old_name, "-L", new_name])
     arguments.extend([str(original_path), str(current_path)])
     result = subprocess.run(arguments, capture_output=True)
     if result.returncode not in (0, 1):
         raise OSError(result.stderr.decode("utf-8", errors="replace").strip() or "diff failed")
     return (result.stdout,) + diff_counts(result.stdout)
-
-
-def unified(original, current, old_name, new_name):
-    if shutil.which("diff"):
-        with tempfile.TemporaryDirectory(prefix="recorder-diff-") as temporary:
-            root = Path(temporary)
-            old, new = root / "original", root / "current"
-            old.write_bytes(original)
-            new.write_bytes(current)
-            return system_diff(old, new, old_name, new_name)
-    return unified_fallback(original, current, old_name, new_name)
 
 
 def finalize_file(record, directory):
@@ -275,7 +190,7 @@ def finalize_file(record, directory):
     path = Path(record["path"])
     # The opening byte limit does not restrict exit comparisons.
     if path.exists():
-        result = system_diff(original_path, path, record["original_file"], str(path), labels=False)
+        result = system_diff(original_path, path)
     else:
         result = None
     if result is None:
@@ -295,18 +210,9 @@ def finalize_file(record, directory):
         record.update(diff_file=filename, lines_added=added, lines_deleted=deleted)
 
 
-def finalize(session, files, config):
+def finalize(session, files):
     directory = Path(session["directory"])
-    if config.get("storage_version") == 2:
-        layout = configured_layout(config)
-        state = layout.record(session["calendar_date"])
-        if (not state or state["disposition"] == "discarded"
-                or state["workspace_id"] != session["workspace_id"]):
-            return {"record": "", "files": 0, "errors": 0, "discarded": True}
     for record in files:
-        focus = record.get("last_focus_line", {})
-        if "time_epoch" in focus:
-            focus["time"] = datetime.fromtimestamp(focus.pop("time_epoch")).strftime("%Y-%m-%d %H:%M:%S")
         try:
             finalize_file(record, directory)
         except (OSError, ValueError) as exc:
@@ -314,8 +220,6 @@ def finalize(session, files, config):
             record["error"] = str(exc)
     payload = {"schema_version": 1, "source": "vim", "session_id": session["session_id"],
                "vim_start": session["vim_start"], "vim_close": now(), "opened_files": files}
-    if config.get("storage_version") == 2:
-        payload.update(storage_version=2, calendar_date=session["calendar_date"])
     # A reader sees either the previous complete file or the new complete file.
     with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=directory,
                                      prefix="record-", suffix=".tmp", delete=False) as stream:
@@ -324,8 +228,7 @@ def finalize(session, files, config):
         temporary = stream.name
     os.replace(temporary, directory / "record.json")
     return {"record": str(directory / "record.json"), "files": len(files),
-            "errors": sum("error" in record or record.get("diff_status") is not None
-                          for record in files)}
+            "errors": sum("error" in record for record in files)}
 
 
 def dispatch(request):
@@ -334,11 +237,8 @@ def dispatch(request):
         return configure(request["config"])
     if action == "start":
         return start(request["config"], request.get("first_file", ""))
-    if action == "capture":
-        return capture(request["path"], request["file_id"],
-                       request["directory"], request["config"])
     if action == "finalize":
-        return finalize(request["session"], request["files"], request["config"])
+        return finalize(request["session"], request["files"])
     raise ValueError("Unknown recorder action")
 
 

@@ -11,7 +11,7 @@ autoload/vim_session_recorder/
   session.vim                   Session/file identity and cursor events
   recorder.vim                  Byte snapshots and exit-time focus excerpts
   native.vim                    Shell-free Python job transport
-python/recorder.py              Shared paths, exit diff and JSON I/O
+python/recorder.py              Startup paths, exit diff and JSON I/O
 tests/                          Isolated synthetic backend/editor tests
 docs/                           Current contracts and reader documentation
   zh-CN/README.md                Chinese user guide
@@ -47,7 +47,7 @@ python -m unittest discover -s tests -v
 
 Tests use temporary synthetic files and isolated configuration/data roots.
 No live editor configuration, existing history, schedule or capture is changed.
-Backend tests cover platform discovery, shared storage validation, collisions,
+Backend tests cover platform discovery, locator priority, fixed session paths, collisions,
 byte and size cases, errors, session JSON and valid diff application.
 Editor tests cover the original Vim-regexp exclusion semantics.
 Readable directory names are checked for Unicode, Windows-invalid characters,
@@ -92,12 +92,23 @@ in the tests. The corrected Windows tests still need a CI rerun.
 - Choose a repository license and confirm rights to the existing source.
 - Complete native platform checks and review the supported host versions.
 - Keep the My Big Brother source adapter compatible with whole sessions
-  discovered across opening-date directories. Historical checkpoint records
-  can still be read, but must not define new recording behavior.
-- Exercise midnight session continuity and deleted-date tests on every host.
-  The protocol implementation in `python/storage.py` is a vendored copy of
-  My Big Brother's standard-library `my_big_brother/storage.py`.
+  discovered across opening-date directories using the current layout only.
+- Exercise midnight session continuity and removed-folder errors on every host.
+  The collector does not import or vendor the main application's storage protocol.
 
 For maintenance, update both reader-facing README languages when behavior
 changes. Keep structured schemas and developer contracts canonical in English.
 Never add personal logs or machine configuration to public fixtures.
+
+## Keep the runtime small
+
+Only three helper requests exist: `configure`, `start`, and `finalize`.
+`configure` resolves `record_dir`, `C/raw-logs-path.txt`, or the platform default.
+`start` creates the session folder. `finalize` receives only the saved session
+and file records. It has no configuration or storage-root lookup.
+
+Snapshots are implemented once, in Vimscript. The Python capture implementation,
+storage registry module, epoch-focus conversion and test-only diff adapter were
+removed. Tests build explicit manifest fixtures for backend comparisons and use
+real editor sessions to check copying. Do not add legacy-layout discovery,
+root relocation or migration to the collector.

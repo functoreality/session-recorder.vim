@@ -43,36 +43,34 @@ loading can load it after `VimEnter`.
 
 ## Storage
 
-The plugin works without My Big Brother or a configuration file. It writes
-`<data_root>/daily/<start-date>/vim/<session>/` using the session-start date,
-equivalent to `date +%F`. No review boundary is read or applied.
+The recording root is selected once at startup, in this order:
 
-By default, `data_root` is the platform data directory for `my-big-brother`.
-Optional `C/storage.json` can select a custom root using `schema_version: 2`
-and an absolute `data_root`. Runtime date metadata is created automatically,
-without writing user configuration. A malformed existing configuration or
-damaged date registry reports an error instead of silently resetting state.
+1. An absolute `record_dir` in the Vim plugin configuration.
+2. An absolute path in `C/raw-logs-path.txt`, a UTF-8 file containing only that
+   path with an optional LF or CRLF ending.
+3. The platform data directory below, followed by `daily`.
 
 `C` is the platform configuration directory:
 
-| System | C |
-| --- | --- |
-| Linux | `$XDG_CONFIG_HOME/my-big-brother`, default `~/.config/my-big-brother` |
-| macOS | `~/Library/Application Support/my-big-brother/configs` |
-| Windows | `%LOCALAPPDATA%/my-big-brother/configs` |
+| System | C | Default data directory |
+| --- | --- | --- |
+| Linux | `$XDG_CONFIG_HOME/my-big-brother` | `$XDG_DATA_HOME/my-big-brother` |
+| macOS | `~/Library/Application Support/my-big-brother/configs` | `~/Library/Application Support/my-big-brother/data` |
+| Windows | `%LOCALAPPDATA%/my-big-brother/configs` | `%LOCALAPPDATA%/my-big-brother/data` |
 
-Empty or relative Linux XDG variables use the default. Windows falls back to
-`~/AppData/Local` if `LOCALAPPDATA` is empty. WSL and remote editors use their
-own operating system, account and filesystem. Default data locations are:
+Linux defaults are `~/.config` and `~/.local/share` when the corresponding
+XDG value is empty or relative. Windows falls back to `~/AppData/Local`.
+WSL and remote editors use their own operating system, account and filesystem.
+An invalid existing locator is reported instead of silently selecting another
+root. `record_dir` overrides the locator without reading it.
 
-- Linux: `$XDG_DATA_HOME/my-big-brother`, default `~/.local/share/my-big-brother`.
-- macOS: `~/Library/Application Support/my-big-brother/data`.
-- Windows: `%LOCALAPPDATA%/my-big-brother/data`.
-
-A session keeps its opening date and original snapshots until normal exit,
-even across midnight. There are no periodic checkpoints or daily segments.
-Deleting an opening date abandons its active session too. The plugin does not
-recreate it or move the output to another date.
+All three choices use `<root>/YYYY-MM-DD/vim/<session>/`. The date is the local
+session-start date. A session keeps that directory and its original snapshots
+until normal exit, even across midnight or later configuration changes.
+The plugin does not read `storage.json`, register dates, check a logical day,
+rotate, or publish periodic checkpoints. It needs no My Big Brother runtime.
+If the current session folder is deleted, exit reports a write failure and
+does not recreate it or switch to another folder.
 
 Each session contains opening snapshots, plus `record.json` and modification
 diffs published at exit. Directory names include the initial buffer's
@@ -91,11 +89,6 @@ An existing directory triggers a new ID, so collisions never overwrite records.
 A missing hint or path-length restriction uses `HH-MM-SS_<short-id>`.
 Read full paths and artifact names from `record.json`, not the directory
 name. See the [record format](docs/RECORD-FORMAT.md).
-
-To use this plugin independently of My Big Brother, explicitly configure an
-absolute `record_dir` before loading it. Standalone recording writes
-`<record_dir>/YYYY-MM-DD/<session>/` and finalizes at editor exit. It does not use the
-shared date registry or daily cleanup lifecycle.
 
 ## Options and verification
 
@@ -121,10 +114,10 @@ let g:vim_session_recorder#config = {
   By default calls wait until finished, matching the original behavior.
   Setting this option also limits the whole exit comparison. A timeout reports
   a recording failure and may leave originals without `record.json`.
-- `record_dir`: optional absolute standalone destination with dated
-  `<record_dir>/YYYY-MM-DD/<session>/` output. Omit it to use shared My Big Brother storage.
+- `record_dir`: optional absolute recording root, overriding the locator.
+  Output uses `<record_dir>/YYYY-MM-DD/vim/<session>/`.
 
-Run `:RecorderStatus` to see the resolved root, storage configuration, mode,
+Run `:RecorderStatus` to see the resolved root, path source,
 current session directory and latest error. Use `:messages` for recording errors.
 
 For a quick check, open a disposable text file, change and save one line, then
@@ -147,7 +140,7 @@ changes can appear in the diff. A cursor position does not measure attention,
 and the optional `executed` marker is a user mapping's claim, not test evidence.
 Renames are observed as paths, not linked into a rename event.
 
-Both shared and standalone recording publish the final record only at exit.
+The final record is published only at exit.
 A session spanning midnight remains under its opening date. A crash can leave
 incomplete artifacts.
 Source read errors and comparison errors are reported in metadata. A final
@@ -156,7 +149,9 @@ write failure appears in editor messages and leaves diagnostic artifacts.
 ## My Big Brother
 
 This independently installed collector supplies the editor records. My Big
-Brother includes their source adapter. Enable its `vim` source explicitly
+Brother includes their source adapter. To share a custom daily root, put its
+absolute path in `C/raw-logs-path.txt` or set `record_dir`. The adapter uses
+that same root, containing `YYYY-MM-DD/vim/` directories. Enable `vim` explicitly
 after checking a synthetic session. Sharing a directory does not itself
 authorize analysis. See the [reader contract](docs/RECORD-FORMAT.md).
 

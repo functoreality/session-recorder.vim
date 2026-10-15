@@ -39,35 +39,33 @@ Windows 的 `py -3` 顺序查找，并使用找到的第一个解释器。
 
 ## 存储位置
 
-插件无需安装 My Big Brother 或准备配置文件，即可独立运行。
-它写入 `<data_root>/daily/<启动日期>/vim/<会话>/`，日期取本机会话启动日期，
-等价于 `date +%F`，不读取或应用复盘工作日分界。
+插件仅在启动时按以下优先级确定记录根目录：
 
-`data_root` 默认采用平台上 `my-big-brother` 的数据位置。
-可选 `C/storage.json` 通过 `schema_version: 2` 和绝对路径 `data_root` 选择其他数据根。
-日期登记状态自动建立，不创建用户配置文件。
-已有配置格式错误或日期登记损坏时报告错误，不静默重建状态。
+1. Vim 配置中的绝对路径 `record_dir`。
+2. `C/raw-logs-path.txt` 中的绝对路径。
+   文件使用 UTF-8，只存一条路径，可带一个 LF 或 CRLF 行尾。
+3. 平台默认数据目录下的 `daily`。
 
 `C` 是平台配置目录：
 
-| 系统 | C |
-| --- | --- |
-| Linux | `$XDG_CONFIG_HOME/my-big-brother`，默认 `~/.config/my-big-brother` |
-| macOS | `~/Library/Application Support/my-big-brother/configs` |
-| Windows | `%LOCALAPPDATA%/my-big-brother/configs` |
+| 系统 | C | 默认数据目录 |
+| --- | --- | --- |
+| Linux | `$XDG_CONFIG_HOME/my-big-brother` | `$XDG_DATA_HOME/my-big-brother` |
+| macOS | `~/Library/Application Support/my-big-brother/configs` | `~/Library/Application Support/my-big-brother/data` |
+| Windows | `%LOCALAPPDATA%/my-big-brother/configs` | `%LOCALAPPDATA%/my-big-brother/data` |
 
-Linux XDG 变量为空或为相对路径时使用默认值。
-Windows 的 `LOCALAPPDATA` 为空时采用 `~/AppData/Local`。
-WSL、远程编辑器使用所在系统、用户和文件系统中的位置。
+Linux 的 XDG 值为空或相对路径时，分别采用 `~/.config` 和 `~/.local/share`。
+Windows 在 `LOCALAPPDATA` 为空时采用 `~/AppData/Local`。
+WSL 和远程编辑器使用各自系统、账户和文件系统的位置。
+已有 TXT 配置无效时报告错误，不静默选用其他根目录。
+指定 `record_dir` 时直接使用它，不读取 TXT。
 
-默认数据根在 Linux 为 `$XDG_DATA_HOME/my-big-brother`，
-未设置时为 `~/.local/share/my-big-brother`。
-macOS 为 `~/Library/Application Support/my-big-brother/data`，
-Windows 为 `%LOCALAPPDATA%/my-big-brother/data`。
-
-会话始终保留启动日期和最初的原始快照，即使退出时已跨过午夜。
-没有定期检查点，也不按日期拆分会话。删除启动日期表示放弃该日期，
-活动会话也不会在退出时重建它或转写其他日期。
+三种配置统一写入 `<根目录>/YYYY-MM-DD/vim/<会话>/`。
+日期取会话启动时的本机自然日期。即使跨午夜、TXT 或 Vim 配置发生变化，
+也始终使用启动时创建的会话目录和原始副本。
+插件不读取 `storage.json`、不登记日期、不判断逻辑日，不轮转或定时生成检查点。
+它无需 My Big Brother 的运行时。
+会话目录若被删除，退出时报告写入失败，不重建，也不改存其他位置。
 
 每个会话在打开文件时保存原始快照，在正常退出时生成 `record.json` 和修改 diff。
 目录名带启动时具名缓冲区的文件名，便于浏览：
@@ -85,10 +83,6 @@ daily/YYYY-MM-DD/vim/HH-MM-SS_工作笔记.md_<short-id>/
 没有片段或遇到路径长度限制时，使用 `HH-MM-SS_<short-id>`。
 完整路径及快照文件名以 `record.json` 为准。
 编写读取器前请读[格式契约](../RECORD-FORMAT.md)。
-
-如需脱离 My Big Brother 单独使用，在加载插件前显式设置绝对路径 `record_dir`。
-独立模式写入 `<record_dir>/YYYY-MM-DD/<session>/`，退出时完成记录，
-不使用共享日期登记和按日清理机制。
 
 ## 配置与验证
 
@@ -113,10 +107,10 @@ let g:vim_session_recorder#config = {
   默认等待调用完成，与原行为一致。
   显式设置此项也会限制整次退出比较，超时会报告失败，
   可能留下原始副本，却没有最终 `record.json`。
-- `record_dir`：可选的独立输出绝对路径，使用 `<record_dir>/YYYY-MM-DD/<session>/` 布局。
-  接入 My Big Brother 的共享存储时应省略。
+- `record_dir`：可选的记录根目录绝对路径，覆盖 TXT 配置。
+  使用 `<record_dir>/YYYY-MM-DD/vim/<session>/` 布局。
 
-运行 `:RecorderStatus` 查看实际根目录、共享配置文件、覆盖来源、当前会话目录和最近错误。
+运行 `:RecorderStatus` 查看实际根目录、配置来源、当前会话目录和最近错误。
 采集错误也可通过 `:messages` 查看。
 
 验证时打开一个可丢弃的文本文件，修改并保存一行，然后正常退出。
@@ -136,13 +130,15 @@ Diff 比较首次记录时和退出时磁盘上的文件内容。放弃的 buffe
 光标位置不表示注意力时长，可选的 `executed` 标记仅表示用户映射的声明，不能证明测试通过。
 重命名按文件路径观察，不会自动关联成重命名事件。
 
-共享模式和独立模式都只在退出时发布最终记录，跨午夜仍写入启动日期目录。
+最终记录只在退出时发布，跨午夜仍写入启动日期目录。
 崩溃可能留下不完整材料。源文件读取失败、比较失败会记录在元数据中。
 最终写入失败会显示在编辑器消息中，并留下诊断材料。
 
 ## My Big Brother
 
 本仓库独立提供编辑器采集器，My Big Brother 已包含对应来源适配器。
+如需使用自定义根目录，将其 `daily` 的绝对路径写入 `C/raw-logs-path.txt`，
+或设置 `record_dir`。读取器使用同一根目录，其中应包含 `YYYY-MM-DD/vim/`。
 验证一次合成会话后，明确启用其 `vim` 来源。共享目录本身不代表授权分析。
 接入规则见[读取契约](../RECORD-FORMAT.md)。
 

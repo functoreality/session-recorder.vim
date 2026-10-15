@@ -69,8 +69,7 @@ function! vim_session_recorder#session#EndSession() abort
         call vim_session_recorder#recorder#ProcessLastFocusLine(l:record)
     endfor
     let l:result = vim_session_recorder#native#Call({'action': 'finalize',
-                \ 'session': s:session, 'files': s:files,
-                \ 'config': vim_session_recorder#config#GetConfig()})
+                \ 'session': s:session, 'files': s:files})
     if l:result.errors
         echom '[vim-session-recorder] Some files could not be compared. See ' . l:result.record
     endif
