@@ -19,7 +19,7 @@ class StorageV2Tests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         self.config_dir = self.root / 'config'
-        self.layout = recorder.storage.Layout.install(self.config_dir, self.root / 'data', 4)
+        self.layout = recorder.storage.Layout.install(self.config_dir, self.root / 'data')
         with patch.object(recorder, 'platform_paths', return_value=(self.config_dir, self.root / 'data')):
             self.config = recorder.configure({})
         self.source = self.root / 'notes.txt'
@@ -43,6 +43,28 @@ class StorageV2Tests(unittest.TestCase):
         self.assertEqual(standalone['storage_version'], 1)
         self.assertTrue(standalone['standalone'])
 
+    def test_default_recording_without_shared_file_uses_system_date(self):
+        config_dir, data = self.root / 'independent-config', self.root / 'independent-data'
+        with patch.object(recorder, 'platform_paths', return_value=(config_dir, data)):
+            config = recorder.configure({})
+        with patch.object(recorder, 'now', return_value=self.moment(15, 3)):
+            session = recorder.start(config)
+        self.assertEqual(Path(session['directory']).parent, data / 'daily/2020-01-15/vim')
+        self.assertEqual(session['calendar_date'], '2020-01-15')
+        self.assertEqual(config['path_source'], 'platform default')
+        self.assertNotIn('day_start_hour', config['storage_settings'])
+        self.assertFalse(config_dir.exists())
+
+    def test_four_oclock_does_not_rotate_a_calendar_date(self):
+        with patch.object(recorder, 'now', return_value=self.moment(15, 3)):
+            session = recorder.start(self.config)
+            files = [recorder.capture(str(self.source), 1, session['directory'], self.config)]
+            recorder.checkpoint(session, files, self.config)
+        with patch.object(recorder, 'now', return_value=self.moment(15, 5)):
+            result = recorder.checkpoint(session, files, self.config)
+        self.assertEqual(result['session']['directory'], session['directory'])
+        self.assertFalse(result.get('rotated', False))
+
     def test_rollover_uses_independent_baseline_and_reports_observation_gap(self):
         session, files = self.start()
         self.source.write_text('late change\n')
@@ -57,7 +79,7 @@ class StorageV2Tests(unittest.TestCase):
         self.assertTrue(records[0]['continued'])
         self.assertIn('late change', (Path(newer['directory']) / records[0]['boundary_diff_file']).read_text())
         self.assertEqual(newer['root_session_id'], session['session_id'])
-        self.assertEqual(newer['logical_day'], '2020-01-16')
+        self.assertEqual(newer['calendar_date'], '2020-01-16')
         self.assertIn('boundary_gap', recorder.storage.read_json(Path(newer['directory']) / 'record.json'))
         self.source.write_text('new-day change\n')
         with patch.object(recorder, 'now', return_value=self.moment(16, 6)):

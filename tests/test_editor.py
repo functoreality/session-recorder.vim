@@ -41,7 +41,7 @@ EDITORS = editors()
 @unittest.skipUnless(EDITORS, "A full Vim (+job/+channel) or Neovim is required")
 class EditorTests(unittest.TestCase):
     def run_editor(self, actions, *, files=(), config="{}", shared_root=None,
-                   extra_env=None, line_ending=b"\n", invalid_storage=False):
+                   extra_env=None, line_ending=b"\n", invalid_storage=False, initialize=True):
         results = []
         for editor, nvim in EDITORS:
             with self.subTest(editor=editor), tempfile.TemporaryDirectory() as temporary:
@@ -68,8 +68,9 @@ class EditorTests(unittest.TestCase):
                 contract = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(contract)
                 data = base / 'custom root 中文' if shared_root == 'custom' else logs.parent
-                layout = contract.Layout.install(config_dir, data, 4)
-                logs = layout.daily
+                if initialize:
+                    layout = contract.Layout.install(config_dir, data)
+                    logs = layout.daily
                 if invalid_storage:
                     (config_dir / 'storage.json').write_text('{broken')
                 if extra_env:
@@ -103,11 +104,21 @@ class EditorTests(unittest.TestCase):
                 records = [(p, json.loads(p.read_text(encoding="utf-8"))) for p in logs.rglob("record.json")]
                 # Copy evidence out before TemporaryDirectory closes.
                 results.append({"records": [payload for _, payload in records],
+                                "configuration_created": (config_dir / 'storage.json').exists(),
                                 "paths": [p.relative_to(logs).as_posix() for p, _ in records],
                                 "artifacts": [{f.name: f.read_bytes() for f in p.parent.iterdir()}
                                               for p, _ in records],
                                 "messages": (work / "messages.txt").read_text(encoding="utf-8")})
         return results
+
+    def test_independent_editor_records_without_shared_configuration(self):
+        for result in self.run_editor(["call setline(1, 'independent')", 'write'],
+                                      files=['first.txt'], initialize=False):
+            self.assertEqual(len(result['records']), 1)
+            record = result['records'][0]
+            self.assertEqual(record['calendar_date'], record['vim_start'][:10])
+            self.assertFalse(result['configuration_created'])
+            self.assertTrue(record['opened_files'][0]['modified'])
 
     def test_storage_v2_records_checkpoint_and_saved_changes(self):
         for result in self.run_editor(["call setline(1, 'changed')", "write"],

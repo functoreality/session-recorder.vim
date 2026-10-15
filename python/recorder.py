@@ -51,15 +51,15 @@ def absolute(value):
 
 
 def configure(config):
-    config_dir, _ = platform_paths()
+    config_dir, data_dir = platform_paths()
     override = config.get("record_dir", "")
-    layout = storage.Layout.load(config_dir) if not override else None
+    layout = storage.Layout.for_collector(config_dir, data_dir) if not override else None
     if override:
         root = absolute(override)
         origin = "record_dir override (standalone, outside shared discovery)"
     else:
         root = layout.daily
-        origin = str(config_dir / "storage.json")
+        origin = str(config_dir / "storage.json") if (config_dir / "storage.json").exists() else "platform default"
     size = config.get("max_file_size", 1048576)
     if type(size) is not int or size <= 0:
         raise ValueError("max_file_size must be a positive integer")
@@ -67,9 +67,15 @@ def configure(config):
     if not isinstance(patterns, list) or any(not isinstance(p, str) for p in patterns):
         raise ValueError("exclude_patterns must be a list of glob strings")
     return {"root": str(root), "path_source": origin,
-            "storage_config": str(config_dir), "storage_version": 2 if layout else 1,
+            "storage_settings": layout.settings if layout else None, "storage_version": 2 if layout else 1,
             "standalone": bool(override), "max_file_size": size,
             "exclude_patterns": patterns}
+
+
+def configured_layout(config):
+    layout = storage.Layout(config['storage_settings'])
+    layout.check()
+    return layout
 
 
 def excluded(path, config):
@@ -88,11 +94,14 @@ def file_label(filename):
 
 def start(config, first_file=""):
     timestamp = now()
+    day = timestamp[:10]
     session_id = uuid4().hex
     parent = Path(config["root"])
-    layout = storage.Layout.load(config["storage_config"]) if config.get("storage_version") == 2 else None
+    layout = configured_layout(config) if config.get("storage_version") == 2 else None
     if layout is not None:
-        parent = layout.ensure_day(layout.day(timestamp)) / "vim"
+        parent = layout.ensure_day(day) / "vim"
+    else:
+        parent = parent / day
     parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     clock = timestamp[11:19].replace(":", "-")
     label = file_label(Path(first_file).name) if first_file else ""
@@ -109,8 +118,7 @@ def start(config, first_file=""):
         directory.mkdir(mode=0o700)
     session = {"session_id": session_id, "vim_start": timestamp, "directory": str(directory)}
     if layout is not None:
-        day = layout.day(timestamp)
-        session.update(logical_day=day, workspace_id=layout.record(day)["workspace_id"],
+        session.update(calendar_date=day, workspace_id=layout.record(day)["workspace_id"],
                        root_session_id=session_id)
     return session
 
@@ -132,7 +140,7 @@ def read_text_bytes(path, limit):
 
 def capture(path, file_id, directory, config):
     if config.get("storage_version") == 2:
-        layout = storage.Layout.load(config["storage_config"])
+        layout = configured_layout(config)
         day = Path(directory).parent.parent.name
         record = layout.record(day)
         if not record or record["disposition"] == "discarded":
@@ -228,8 +236,8 @@ def finalize_file(record, directory, limit):
 def finalize(session, files, config, *, checkpoint=False):
     directory = Path(session["directory"])
     if config.get("storage_version") == 2:
-        layout = storage.Layout.load(config["storage_config"])
-        state = layout.record(session["logical_day"])
+        layout = configured_layout(config)
+        state = layout.record(session["calendar_date"])
         if (not state or state["disposition"] == "discarded"
                 or state["workspace_id"] != session["workspace_id"]):
             return {"record": "", "files": 0, "errors": 0, "discarded": True}
@@ -245,9 +253,9 @@ def finalize(session, files, config, *, checkpoint=False):
     payload = {"schema_version": 1, "source": "vim", "session_id": session["session_id"],
                "vim_start": session["vim_start"], "vim_close": now(), "opened_files": files}
     if config.get("storage_version") == 2:
-        payload.update(storage_version=2, logical_day=session["logical_day"],
+        payload.update(storage_version=2, calendar_date=session["calendar_date"],
                        root_session_id=session["root_session_id"], segment_open=checkpoint,
-                       diff_scope="Independent logical-day segment through the recorded checkpoint")
+                       diff_scope="Independent calendar-date segment through the recorded checkpoint")
         if session.get("boundary_gap"):
             payload["boundary_gap"] = session["boundary_gap"]
     # A reader sees either the previous complete file or the new complete file.
@@ -270,14 +278,14 @@ def checkpoint(session, files, config):
     """
     if config.get("storage_version") != 2:
         return {"session": session, "files": files}
-    layout = storage.Layout.load(config["storage_config"])
+    layout = configured_layout(config)
     current = now()
-    day = layout.day(current)
-    if day == session["logical_day"]:
+    day = current[:10]
+    if day == session["calendar_date"]:
         result = finalize(session, files, config, checkpoint=True)
         return {"session": session, "files": files, "discarded": result.get("discarded", False)}
     old_record = Path(session["directory"]) / "record.json"
-    prior = layout.record(session["logical_day"])
+    prior = layout.record(session["calendar_date"])
     if old_record.exists() and prior and prior["disposition"] != "discarded":
         payload = storage.read_json(old_record)
         payload.update(segment_open=False, rollover_observed_at=current,

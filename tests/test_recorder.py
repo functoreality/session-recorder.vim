@@ -82,23 +82,23 @@ class RecorderTests(unittest.TestCase):
         target = self.root / "standalone"
         config, session, directory = self.session(record_dir=str(target))
         self.assertTrue(config["standalone"])
-        self.assertEqual(directory.parent, target)
+        self.assertEqual(directory.parent, target / session['vim_start'][:10])
         self.assertEqual(session["session_id"], directory.name.rsplit("_", 1)[-1])
 
     def test_shared_storage_preserves_unicode_and_spaces(self):
         target = self.root / "记录 space"
         custom = self.root / "custom-config"
-        recorder.storage.Layout.install(custom, target, 4)
+        recorder.storage.Layout.install(custom, target)
         with mock.patch.object(recorder, 'platform_paths', return_value=(custom, target)):
             config = self.config()
         self.assertEqual(config['root'], str(target / 'daily'))
         self.assertEqual(config['path_source'], str(custom / 'storage.json'))
 
-    def test_missing_or_invalid_shared_storage_does_not_fall_back(self):
+    def test_missing_shared_config_uses_defaults_and_invalid_config_is_reported(self):
         shared = self.config_dir / 'storage.json'
         shared.rename(self.config_dir / 'saved-storage.json')
-        with self.assertRaisesRegex(ValueError, 'not initialized'):
-            self.config()
+        self.assertEqual(self.config()['root'], str(self.data_dir / 'daily'))
+        self.assertFalse(shared.exists())
         shared.write_text('{broken')
         with self.assertRaises(ValueError):
             self.config()

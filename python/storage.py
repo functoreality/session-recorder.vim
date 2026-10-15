@@ -1,7 +1,7 @@
 """Storage v2 protocol, also vendored by independent activity collectors.
 
 This module uses only the standard library and has no package imports.
-All writers register a logical day before creating it. Missing registered
+All writers register a calendar date before creating it. Missing registered
 workspaces are abandoned, even if a review or a collector failed.
 """
 
@@ -94,7 +94,7 @@ def timestamp(value=None):
 
 def managed_layout(daily_root):
     root = Path(daily_root)
-    marker = root.parent / 'memory/_system/storage.json'
+    marker = root.parent / 'memory/_system/identity.json'
     if root.name != 'daily' or not marker.exists():
         return None
     result = Layout(read_json(marker))
@@ -106,19 +106,15 @@ def managed_layout(daily_root):
 
 class Layout:
     def __init__(self, value):
-        if (set(value) != {"schema_version", "data_root", "day_start_hour"}
+        if (set(value) != {"schema_version", "data_root"}
                 or type(value["schema_version"]) is not int or value["schema_version"] != 2):
             raise ValueError("storage.json requires the version 2 storage contract")
         root = value["data_root"]
-        hour = value["day_start_hour"]
         if (not isinstance(root, str) or not root or "\n" in root or "\r" in root
                 or not Path(root).is_absolute()):
             raise ValueError("storage.data_root must be an absolute path")
-        if type(hour) is not int or not 0 <= hour <= 23:
-            raise ValueError("storage.day_start_hour must be between 0 and 23")
         self.settings = value
         self.root = Path(root)
-        self.hour = hour
         self.daily = self.root / "daily"
         self.memory = self.root / "memory"
         self.system = self.memory / "_system"
@@ -135,39 +131,51 @@ class Layout:
         return result
 
     @classmethod
-    def install(cls, config_dir, data_root, hour=0):
+    def install(cls, config_dir, data_root):
         path = Path(config_dir) / "storage.json"
-        settings = {"schema_version": 2, "data_root": str(data_root), "day_start_hour": hour}
+        settings = {"schema_version": 2, "data_root": str(data_root)}
         if path.exists():
             result = cls.load(config_dir)
             if result.settings != settings:
-                raise ValueError("Existing storage preserved. Changing its root or calendar in place is unsupported.")
+                raise ValueError("Existing storage preserved. Changing its root in place is unsupported.")
             return result
-        result = cls(settings)
-        marker = result.system / "storage.json"
-        if marker.exists():
-            if read_json(marker) != settings:
-                raise ValueError("Existing data has a different storage calendar")
-            result.check()
-            write_json(path, settings)
-            return result
-        if result.system.exists() and any(result.system.iterdir()):
-            raise ValueError("Existing persistent storage has no calendar marker. Do not reset it.")
-        for directory in (result.daily, result.system / "days", result.system / "locks"):
-            directory.mkdir(parents=True, exist_ok=True, mode=0o700)
-        write_json(marker, settings)
+        result = cls(settings).initialize_data()
         write_json(path, settings)
         return result
 
+    @classmethod
+    def for_collector(cls, config_dir, data_root):
+        """Optional shared configuration, otherwise ordinary platform defaults.
+
+        Create runtime metadata, never an application configuration file.
+        Collectors do not need the main application installed or initialized.
+        """
+        path = Path(config_dir) / "storage.json"
+        settings = read_json(path) if path.exists() else {
+            "schema_version": 2, "data_root": str(data_root)}
+        return cls(settings).initialize_data()
+
+    def initialize_data(self):
+        with file_lock(self.system / "locks" / "initialization.lock"):
+            marker = self.system / "identity.json"
+            if marker.exists():
+                self.check()
+                return self
+            if any(path.name != "locks" for path in self.system.iterdir()):
+                raise ValueError("Existing persistent storage has no marker. Do not reset it.")
+            self.daily.mkdir(parents=True, exist_ok=True, mode=0o700)
+            (self.system / "days").mkdir(mode=0o700)
+            write_json(marker, self.settings)
+        return self
+
     def check(self):
-        if read_json(self.system / "storage.json") != self.settings:
-            raise ValueError("Storage calendar changed or persistent metadata is unavailable")
+        if read_json(self.system / "identity.json") != self.settings:
+            raise ValueError("Storage identity changed or persistent metadata is unavailable")
         if not (self.system / "days").is_dir():
             raise ValueError("Persistent day registry is missing. Do not initialize an empty replacement.")
 
     def day(self, value=None):
-        moment = timestamp(value)
-        return (moment.date() - timedelta(days=moment.hour < self.hour)).isoformat()
+        return timestamp(value).strftime("%Y-%m-%d")
 
     def launch_directory(self, preferred_day=None):
         # Log ownership only. The executing Agent chooses its review plan.
@@ -184,8 +192,8 @@ class Layout:
         parsed = date.fromisoformat(day)
         if parsed.isoformat() != day:
             raise ValueError("Dates must use YYYY-MM-DD")
-        return (datetime.combine(parsed, time(hour=self.hour)).astimezone(),
-                datetime.combine(parsed + timedelta(days=1), time(hour=self.hour)).astimezone())
+        return (datetime.combine(parsed, time()).astimezone(),
+                datetime.combine(parsed + timedelta(days=1), time()).astimezone())
 
     def _record(self, day):
         self.check()
