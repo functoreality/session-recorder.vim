@@ -39,59 +39,44 @@ Windows 的 `py -3` 顺序查找，并使用找到的第一个解释器。
 
 ## 存储位置
 
-My Big Brother 初始化 `C/storage.json` v2 后，插件自动写入
-`<data_root>/daily/<逻辑工作日>/vim/<分段>/`，共用日界线和持久化日期登记。
-无需再配置 Vim 路径变量。显式设置 `record_dir` 时仍采用独立模式。
+先通过 My Big Brother 初始化共享存储。插件读取 `C/storage.json`，写入
+`<data_root>/daily/<逻辑工作日>/vim/<分段>/`，共用固定日界线和持久化日期登记。
+无需设置额外的 Vim 路径变量。共享配置缺失或无效时停止采集并报告错误，
+不会选择其他目录。不要只手工创建 JSON 文件而不建立配套登记。
 
-v2 模式会在编辑器事件发生时以及每 30 秒保存检查点。
-进入新工作日后，创建有独立原始快照的新分段，不依赖之前日期的目录。
-若很晚才观察到跨日，会报告未观察区间，不把期间变化强行归到某一天。
-删除已无活动写入的旧日期表示放弃，插件不会重建它，也不会悄悄改写其他目录。
-请通过 My Big Brother 初始化或迁移存储，再重启编辑器。
-不要只手工创建 `storage.json` 而不建立配套的持久化日期登记。
+`C` 是平台配置目录：
 
-没有 v2 配置时，旧版默认输出到 `D/raw-logs/YYYY-MM-DD/vim/<session>/`。
-`C` 是配置目录，`D` 是默认数据目录：
+| 系统 | C |
+| --- | --- |
+| Linux | `$XDG_CONFIG_HOME/my-big-brother`，默认 `~/.config/my-big-brother` |
+| macOS | `~/Library/Application Support/my-big-brother/configs` |
+| Windows | `%LOCALAPPDATA%/my-big-brother/configs` |
 
-| 系统 | C | D |
-| --- | --- | --- |
-| Linux | `$XDG_CONFIG_HOME/my-big-brother`，默认 `~/.config/my-big-brother` | `$XDG_DATA_HOME/my-big-brother`，默认 `~/.local/share/my-big-brother` |
-| macOS | `~/Library/Application Support/my-big-brother/configs` | `~/Library/Application Support/my-big-brother/data` |
-| Windows | `%LOCALAPPDATA%/my-big-brother/configs` | `%LOCALAPPDATA%/my-big-brother/data` |
-
-Linux 的 XDG 变量为空或是相对路径时使用默认值。
+Linux XDG 变量为空或为相对路径时使用默认值。
 Windows 的 `LOCALAPPDATA` 为空时采用 `~/AppData/Local`。
-WSL、远程编辑器分别使用所在系统、用户与文件系统中的位置。
+WSL、远程编辑器使用所在系统、用户和文件系统中的位置。
 
-要与 My Big Brother 等采集器共享自定义原始日志根，在
-`C/raw-logs-path.txt` 中写入一行 UTF-8 绝对路径，例如：
+共享模式在编辑器事件发生时以及每 30 秒保存检查点。
+新工作日创建有独立原始快照的新分段，不依赖之前日期的目录。
+跨日观察存在空缺时会明确报告。删除已无活动写入的旧日期表示放弃，
+插件不会重建它，也不会把当天事件转写到其他目录。
 
-```text
-/absolute/path/to/work-records
-```
-
-允许一个 LF 或 CRLF 行尾，保留空格和反斜杠。
-不要加引号、注释、`~` 或环境变量。文件缺失时采用默认位置。
-文件存在但无效时停止本次编辑器进程的采集，并报告错误。
-插件在进程启动时读取一次该文件，不读取主项目的 `config.json` 或 `results_root`。
-
-旧模式中，每个会话目录包含 `record.json`、小型 UTF-8 文件的原始副本，以及修改文件的
-unified diff。日期取第一个记录文件时的本地自然日期。
-跨午夜会话仍留在原目录。编写读取器前请读[格式契约](../RECORD-FORMAT.md)。
-
-会话目录名包含首个记录文件的文件名，方便人工查找快照：
+每个分段包含 `record.json`、有大小限制的 UTF-8 原始快照、检查点和修改 diff。
+目录名带首个记录文件的文件名，便于浏览：
 
 ```text
-YYYY-MM-DD/vim/HH-MM-SS_工作笔记.md_<session_id>/
+daily/YYYY-MM-DD/vim/HH-MM-SS_工作笔记.md_<session_id>/
 ```
 
-保留中文等 Unicode 字符，将 Windows 不允许的字符替换为 `_`。
-文件名片段最多保留 64 个 UTF-8 字节，不截断字符。
-没有可用片段或遇到路径长度限制时，可退回 `HH-MM-SS_<session_id>`。
-完整随机标识仍用于防止目录碰撞。
-同一会话后来打开其他文件时，目录名不会改变。
-恢复文件时，请在 `record.json` 中核对完整路径，并找到 `original_file` 指定的副本。
-该副本是文件首次被记录时的状态。
+保留 Unicode 字符，将 Windows 不允许的字符替换为 `_`。
+文件名片段最多 64 个 UTF-8 字节，不截断字符。
+没有片段或遇到路径长度限制时，使用 `HH-MM-SS_<session_id>`。
+完整随机标识用于防止碰撞。完整路径及快照文件名以 `record.json` 为准。
+编写读取器前请读[格式契约](../RECORD-FORMAT.md)。
+
+如需脱离 My Big Brother 单独使用，在加载插件前显式设置绝对路径 `record_dir`。
+独立模式写入 `<record_dir>/<session>/`，退出时完成记录，
+不使用共享日期登记、定期检查点和按日清理机制。
 
 ## 配置与验证
 
@@ -113,10 +98,8 @@ let g:vim_session_recorder#config = {
 - `helper_timeout_ms`：单次 Python 调用的最长时间，包含退出时整批文件的比较。
   文件很多或磁盘较慢时可调高。超时会报告采集失败，可能留下原始副本，
   却没有最终 `record.json`。
-- `record_dir`：可选的独立输出绝对路径，保留旧版
-  `<record_dir>/<session>/` 平铺布局，并绕过共享路径发现。
-  接入 My Big Brother 时应省略。旧 `uuid_length` 已不再使用，
-  目录始终包含完整随机会话标识。
+- `record_dir`：可选的独立输出绝对路径，使用 `<record_dir>/<session>/` 布局。
+  接入 My Big Brother 的共享存储时应省略。
 
 运行 `:RecorderStatus` 查看实际根目录、共享配置文件、覆盖来源、当前会话目录和最近错误。
 采集错误也可通过 `:messages` 查看。
@@ -137,18 +120,15 @@ Diff 比较首次记录时和退出时磁盘上的文件内容。放弃的 buffe
 光标位置不表示注意力时长，可选的 `executed` 标记仅表示用户映射的声明，不能证明测试通过。
 重命名按文件路径观察，不会自动关联成重命名事件。
 
-目前没有定时检查点或按日轮转，长会话只有关闭后才发布记录。
-崩溃可能只留下原始副本。源文件读取失败、比较失败会记录在元数据中。
+共享模式会持续发布检查点，独立模式在退出时发布。
+崩溃可能留下不完整材料。源文件读取失败、比较失败会记录在元数据中。
 最终写入失败会显示在编辑器消息中，并留下诊断材料。
 
-## 迁移与 My Big Brother
+## My Big Brother
 
-[迁移说明](../MIGRATION.md)列出了默认位置与旧配置的变化。
-已有日志不会自动移动或删除，旧读取器仍可递归发现旧 `record.json`。
-
-本仓库独立提供编辑器采集器，公开 My Big Brother 目前尚无 Vim 来源适配器。
-共享原始日志位置只完成存储接口准备，不会自动开启每日分析。
-[读取契约](../RECORD-FORMAT.md)说明后续接入要求。
+本仓库独立提供编辑器采集器，My Big Brother 已包含对应来源适配器。
+验证一次合成会话后，明确启用其 `vim` 来源。共享目录本身不代表授权分析。
+接入规则见[读取契约](../RECORD-FORMAT.md)。
 
 当前实现与测试见[开发说明](../DEVELOPMENT.md)。
 早期个人需求和设计稿保留在 [docs/archive](../archive/README.md)，与现行说明分开。

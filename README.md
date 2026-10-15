@@ -43,64 +43,49 @@ loading can load it after `VimEnter`.
 
 ## Storage
 
-When My Big Brother initializes `C/storage.json` version 2, the plugin uses
-`<data_root>/daily/<logical-day>/vim/<segment>/`. It shares the configured
-day boundary and durable day registry. No Vim path variable is needed.
-An explicitly configured `record_dir` keeps standalone behavior.
+Initialize My Big Brother before using shared recording. The plugin reads
+`C/storage.json` and writes `<data_root>/daily/<logical-day>/vim/<segment>/`.
+It shares the fixed day boundary and durable date registry. No Vim path
+variable is needed. Missing or invalid shared configuration stops recording
+and reports an error. There is no alternate storage fallback.
 
-In v2 mode, checkpoints are written on editor events and every 30 seconds.
-A new logical day starts an independent segment with new original snapshots.
-Later segments do not depend on earlier directories. If rollover is observed
-late, the unobserved interval is reported rather than assigned to a day.
-Deleting an inactive old day means abandoning it. The plugin does not
-recreate that directory or silently fall back to another root.
-Initialize or migrate storage through My Big Brother, then restart editors.
-Do not create only `storage.json` without the accompanying durable registry.
+`C` is the platform configuration directory:
 
-Without the v2 contract, the legacy default is
-`D/raw-logs/YYYY-MM-DD/vim/<session>/`.
-`C` is the configuration directory and `D` is the default data directory:
-
-| System | C | D |
-| --- | --- | --- |
-| Linux | `$XDG_CONFIG_HOME/my-big-brother`, default `~/.config/my-big-brother` | `$XDG_DATA_HOME/my-big-brother`, default `~/.local/share/my-big-brother` |
-| macOS | `~/Library/Application Support/my-big-brother/configs` | `~/Library/Application Support/my-big-brother/data` |
-| Windows | `%LOCALAPPDATA%/my-big-brother/configs` | `%LOCALAPPDATA%/my-big-brother/data` |
+| System | C |
+| --- | --- |
+| Linux | `$XDG_CONFIG_HOME/my-big-brother`, default `~/.config/my-big-brother` |
+| macOS | `~/Library/Application Support/my-big-brother/configs` |
+| Windows | `%LOCALAPPDATA%/my-big-brother/configs` |
 
 Empty or relative Linux XDG variables use the default. Windows falls back to
 `~/AppData/Local` if `LOCALAPPDATA` is empty. WSL and remote editors use their
-own operating system, account and filesystem.
+own operating system, account and filesystem. Initialize the shared contract
+through My Big Brother rather than creating only its JSON file.
 
-To share a custom raw-log root with My Big Brother and other collectors, put
-one absolute UTF-8 path in `C/raw-logs-path.txt`. For example:
+Checkpoints are written on editor events and every 30 seconds. A new logical
+day starts an independent segment with fresh original snapshots. Later
+segments do not depend on earlier directories. A late rollover reports its
+unobserved interval. Deleting an inactive old day abandons it. The plugin
+will not recreate it or select another directory for that day's events.
 
-```text
-/absolute/path/to/work-records
-```
-
-One optional LF or CRLF terminator is accepted. Spaces and backslashes are
-preserved. Do not add quotes, comments, `~` or environment variables. An existing
-invalid file disables this editor's recording and reports the error. A missing
-file uses the platform default. The plugin reads this file once per editor
-process and never reads My Big Brother's `config.json` or `results_root`.
-
-In legacy mode, each session directory contains `record.json`, small UTF-8 original files,
-and unified diffs for changed files. Dates represent the first recorded file's
-local natural date. A session spanning midnight stays in that directory.
-Session names include the first recorded file's basename for manual browsing:
+Each segment contains `record.json`, bounded UTF-8 original snapshots,
+checkpoints and modification diffs. Directory names include the first file's
+basename for browsing, for example:
 
 ```text
-YYYY-MM-DD/vim/HH-MM-SS_notes.md_<session_id>/
+daily/YYYY-MM-DD/vim/HH-MM-SS_notes.md_<session_id>/
 ```
 
-Unicode names are retained. Characters invalid on Windows are replaced with
-`_`, and the basename hint is limited to 64 UTF-8 bytes without cutting a
-character. A missing hint or a path-length restriction can leave the compact
-`HH-MM-SS_<session_id>` name. The full random ID still prevents name collisions.
-The hint stays unchanged when other files are opened during the same session.
-For recovery, match the full path in `record.json` and use its `original_file`
-snapshot. That snapshot represents the file when first recorded.
-See the [record format](docs/RECORD-FORMAT.md) before writing a reader.
+Unicode names are retained. Windows-invalid characters become `_`. The hint
+is limited to 64 UTF-8 bytes without cutting a character. A missing hint or
+path-length restriction uses `HH-MM-SS_<session_id>`. The full random ID
+prevents collisions. Read full paths and artifact names from `record.json`,
+not the directory name. See the [record format](docs/RECORD-FORMAT.md).
+
+To use this plugin independently of My Big Brother, explicitly configure an
+absolute `record_dir` before loading it. Standalone recording writes
+`<record_dir>/<session>/` and finalizes at editor exit. It does not use the
+shared date registry, checkpoints or daily cleanup lifecycle.
 
 ## Options and verification
 
@@ -123,12 +108,10 @@ let g:vim_session_recorder#config = {
 - `helper_timeout_ms`: maximum time for each helper invocation, including the
   entire exit comparison. Increase it for many files or a slow disk. A timeout
   reports a recording failure, and may leave originals without `record.json`.
-- `record_dir`: optional absolute standalone destination. It retains the old
-  flat `<record_dir>/<session>/` layout and bypasses shared location discovery.
-  Omit it when using My Big Brother. The old `uuid_length` option is no longer
-  used, as directory names always contain a full random session identifier.
+- `record_dir`: optional absolute standalone destination with flat
+  `<record_dir>/<session>/` output. Omit it to use shared My Big Brother storage.
 
-Run `:RecorderStatus` to see the resolved root, locator, override source,
+Run `:RecorderStatus` to see the resolved root, storage configuration, mode,
 current session directory and latest error. Use `:messages` for recording errors.
 
 For a quick check, open a disposable text file, change and save one line, then
@@ -149,21 +132,17 @@ changes can appear in the diff. A cursor position does not measure attention,
 and the optional `executed` marker is a user mapping's claim, not test evidence.
 Renames are observed as paths, not linked into a rename event.
 
-There is no periodic checkpoint or daily rotation. Long-lived sessions publish
-only when closed. A crash may leave originals without a completed record.
+Shared recording publishes checkpoints throughout the session. Standalone
+recording publishes only at exit. A crash can leave incomplete artifacts.
 Source read errors and comparison errors are reported in metadata. A final
 write failure appears in editor messages and leaves diagnostic artifacts.
 
-## Migration and My Big Brother
+## My Big Brother
 
-[Migration](docs/MIGRATION.md) explains the changed defaults and legacy options.
-Existing logs are not moved or removed. Old records remain usable by their old
-reader, which recursively discovers `record.json`.
-
-This repository provides the editor collector independently. The public
-My Big Brother project currently has no Vim source adapter. Sharing its raw-log
-location prepares the storage interface but does not enable daily analysis.
-The [reader contract](docs/RECORD-FORMAT.md) describes the remaining integration.
+This independently installed collector supplies the editor records. My Big
+Brother includes their source adapter. Enable its `vim` source explicitly
+after checking a synthetic session. Sharing a directory does not itself
+authorize analysis. See the [reader contract](docs/RECORD-FORMAT.md).
 
 Current implementation and tests are described in [Development](docs/DEVELOPMENT.md).
 Earlier personal requirements and proposals are preserved in

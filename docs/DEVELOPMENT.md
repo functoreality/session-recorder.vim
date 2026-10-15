@@ -13,7 +13,7 @@ autoload/vim_session_recorder/
   native.vim                    Shell-free Python job transport
 python/recorder.py              Paths, bounded snapshots, diff and JSON I/O
 tests/                          Isolated synthetic backend/editor tests
-docs/                           Current contracts and migration
+docs/                           Current contracts and reader documentation
   zh-CN/README.md                Chinese user guide
   archive/                      Earlier personal requirements/proposals
 ```
@@ -42,8 +42,8 @@ python -m unittest discover -s tests -v
 ```
 
 Tests use temporary synthetic files and isolated configuration/data roots.
-No live editor configuration, existing history, schedule or raw log is changed.
-Backend tests cover platform discovery, UTF-8 locator validation, collisions,
+No live editor configuration, existing history, schedule or capture is changed.
+Backend tests cover platform discovery, shared storage validation, collisions,
 globs, text/binary/size cases, errors, session JSON and valid diff application.
 Readable directory names are checked for Unicode, Windows-invalid characters,
 bounded hints, same-file collisions and fallback under path-length restrictions.

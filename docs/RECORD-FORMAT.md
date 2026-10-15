@@ -19,7 +19,7 @@ Required top-level fields:
 | `opened_files` | Ordered array of file records |
 
 Shared storage uses
-`raw-logs/YYYY-MM-DD/vim/HH-MM-SS_<first-file>_<session_id>/`.
+`daily/YYYY-MM-DD/vim/HH-MM-SS_<first-file>_<session_id>/`.
 `first-file` is a readable hint from the first recorded basename. Unicode is
 preserved, Windows-invalid characters become `_`, and the hint is truncated
 at a UTF-8 character boundary to at most 64 bytes. Leading/trailing spaces
@@ -81,7 +81,7 @@ Originals are captured at file-open/new-file or first write-path detection.
 Diffs compare on-disk files at editor exit, and `record.json` is replaced
 atomically only after comparisons. A missing final record means an unfinished
 session or a failed write. Temporary `record-*.tmp` files are not input records.
-This describes legacy/standalone mode. There is no separate daemon.
+This describes standalone mode. There is no separate daemon.
 
 A session spanning midnight stays under its **start date**. Records are session
 aggregates, not individual save events. A reader must discover sessions
@@ -118,7 +118,7 @@ Diffs still compare disk bytes. Unsaved buffer content is not a saved edit.
 
 The shared date registry is consulted before writes. A removed day is not
 recreated. A deliberately configured standalone `record_dir` opts out of this
-managed lifecycle and retains legacy session behavior.
+managed lifecycle and records one session until exit.
 
 ## My Big Brother integration
 
@@ -136,5 +136,4 @@ My Big Brother provides a separate Vim source adapter. Its contract is to:
    unsupported versions, missing originals, and disabled source behavior.
 
 Storage v2 readers select the logical-day segment directory and interpret
-checkpoint endpoints and boundary gaps. Legacy readers still need recursive
-cross-date discovery. Keep the editor collector independently installable.
+checkpoint endpoints and boundary gaps. Standalone readers discover session manifests recursively. Keep the editor collector independently installable.
