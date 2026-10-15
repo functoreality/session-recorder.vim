@@ -51,34 +51,22 @@ def absolute(value):
 
 
 def configure(config):
-    config_dir, data_dir = platform_paths()
-    locator = config_dir / "raw-logs-path.txt"
+    config_dir, _ = platform_paths()
     override = config.get("record_dir", "")
-    layout = storage.Layout.load(config_dir, required=False) if not override else None
+    layout = storage.Layout.load(config_dir) if not override else None
     if override:
         root = absolute(override)
         origin = "record_dir override (standalone, outside shared discovery)"
-    elif layout is not None:
+    else:
         root = layout.daily
         origin = str(config_dir / "storage.json")
-    elif locator.exists():
-        value = locator.read_bytes().decode("utf-8")
-        if value.endswith("\r\n"):
-            value = value[:-2]
-        elif value.endswith("\n"):
-            value = value[:-1]
-        root = absolute(value)
-        origin = str(locator)
-    else:
-        root = data_dir / "raw-logs"
-        origin = "platform default"
     size = config.get("max_file_size", 1048576)
     if type(size) is not int or size <= 0:
         raise ValueError("max_file_size must be a positive integer")
     patterns = config.get("exclude_patterns", ["*.tmp", "*.log", ".git/*"])
     if not isinstance(patterns, list) or any(not isinstance(p, str) for p in patterns):
         raise ValueError("exclude_patterns must be a list of glob strings")
-    return {"root": str(root), "locator": str(locator), "path_source": origin,
+    return {"root": str(root), "path_source": origin,
             "storage_config": str(config_dir), "storage_version": 2 if layout else 1,
             "standalone": bool(override), "max_file_size": size,
             "exclude_patterns": patterns}
@@ -105,8 +93,6 @@ def start(config, first_file=""):
     layout = storage.Layout.load(config["storage_config"]) if config.get("storage_version") == 2 else None
     if layout is not None:
         parent = layout.ensure_day(layout.day(timestamp)) / "vim"
-    elif not config["standalone"]:
-        parent = parent / timestamp[:10] / "vim"
     parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     clock = timestamp[11:19].replace(":", "-")
     label = file_label(Path(first_file).name) if first_file else ""

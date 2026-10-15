@@ -27,6 +27,7 @@ class RecorderTests(unittest.TestCase):
         self.config_dir = self.root / "configs"
         self.data_dir = self.root / "data"
         self.config_dir.mkdir()
+        recorder.storage.Layout.install(self.config_dir, self.data_dir)
         self.paths = mock.patch.object(
             recorder, "platform_paths", return_value=(self.config_dir, self.data_dir)
         )
@@ -77,35 +78,30 @@ class RecorderTests(unittest.TestCase):
         ), (base / "configs", base / "data"))
 
     def test_default_and_standalone_roots(self):
-        self.assertEqual(self.config()["root"], str(self.data_dir / "raw-logs"))
+        self.assertEqual(self.config()["root"], str(self.data_dir / "daily"))
         target = self.root / "standalone"
         config, session, directory = self.session(record_dir=str(target))
         self.assertTrue(config["standalone"])
         self.assertEqual(directory.parent, target)
         self.assertEqual(session["session_id"], directory.name.rsplit("_", 1)[-1])
 
-    def test_locator_utf8_and_line_endings_preserve_path(self):
-        target = str(self.root / "日志 space ")
-        locator = self.config_dir / "raw-logs-path.txt"
-        for ending in (b"", b"\n", b"\r\n"):
-            with self.subTest(ending=ending):
-                locator.write_bytes(target.encode("utf-8") + ending)
-                config = self.config()
-                self.assertEqual(config["root"], target)
-                self.assertFalse(config["standalone"])
-                self.assertEqual(config["path_source"], str(locator))
+    def test_shared_storage_preserves_unicode_and_spaces(self):
+        target = self.root / "记录 space"
+        custom = self.root / "custom-config"
+        recorder.storage.Layout.install(custom, target, 4)
+        with mock.patch.object(recorder, 'platform_paths', return_value=(custom, target)):
+            config = self.config()
+        self.assertEqual(config['root'], str(target / 'daily'))
+        self.assertEqual(config['path_source'], str(custom / 'storage.json'))
 
-    def test_invalid_locator_does_not_fall_back(self):
-        locator = self.config_dir / "raw-logs-path.txt"
-        invalid = [b"", b"relative/path\n", b"~/logs\n", b"$HOME/logs\n",
-                   b"first\nsecond\n", b"\xff\n",
-                   (str(self.root) + "\n\n").encode(),
-                   (str(self.root) + "\r").encode()]
-        for contents in invalid:
-            with self.subTest(contents=contents):
-                locator.write_bytes(contents)
-                with self.assertRaises((ValueError, UnicodeError)):
-                    self.config()
+    def test_missing_or_invalid_shared_storage_does_not_fall_back(self):
+        shared = self.config_dir / 'storage.json'
+        shared.rename(self.config_dir / 'saved-storage.json')
+        with self.assertRaisesRegex(ValueError, 'not initialized'):
+            self.config()
+        shared.write_text('{broken')
+        with self.assertRaises(ValueError):
+            self.config()
 
     def test_same_second_sessions_have_unique_directories(self):
         with mock.patch.object(recorder, "now", return_value="2026-10-14T23:59:59+08:00"):
@@ -117,7 +113,7 @@ class RecorderTests(unittest.TestCase):
         second_dir = Path(second["directory"])
         self.assertNotEqual(first["session_id"], second["session_id"])
         self.assertNotEqual(first_dir, second_dir)
-        self.assertEqual(first_dir.parent, self.data_dir / "raw-logs" / "2026-10-14" / "vim")
+        self.assertEqual(first_dir.parent, self.data_dir / "daily" / "2026-10-14" / "vim")
         self.assertTrue(first_dir.is_dir())
         self.assertTrue(second_dir.is_dir())
         self.assertNotIn(":", first_dir.name)

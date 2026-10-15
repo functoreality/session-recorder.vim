@@ -86,7 +86,7 @@ class StorageV2Tests(unittest.TestCase):
         self.assertFalse(files[0]['modified'])
         self.assertNotIn('diff_file', files[0])
 
-    def test_invalid_storage_never_falls_back_to_legacy_root(self):
+    def test_invalid_shared_storage_is_reported(self):
         (self.config_dir / 'storage.json').write_text('{broken')
         with patch.object(recorder, 'platform_paths', return_value=(self.config_dir, self.root / 'data')):
             with self.assertRaises(ValueError):

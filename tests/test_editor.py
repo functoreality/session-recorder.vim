@@ -40,8 +40,8 @@ EDITORS = editors()
 
 @unittest.skipUnless(EDITORS, "A full Vim (+job/+channel) or Neovim is required")
 class EditorTests(unittest.TestCase):
-    def run_editor(self, actions, *, files=(), config="{}", locator=None,
-                   extra_env=None, line_ending=b"\n", storage_v2=False):
+    def run_editor(self, actions, *, files=(), config="{}", shared_root=None,
+                   extra_env=None, line_ending=b"\n", invalid_storage=False):
         results = []
         for editor, nvim in EDITORS:
             with self.subTest(editor=editor), tempfile.TemporaryDirectory() as temporary:
@@ -51,31 +51,27 @@ class EditorTests(unittest.TestCase):
                 # Keep fixture bytes explicit, including on Windows.
                 (work / "first.txt").write_bytes(b"before" + line_ending)
                 (work / "second.json").write_bytes(b'{"original": true}' + line_ending)
-                logs = base / "data" / "my-big-brother" / "raw-logs"
+                logs = base / "data" / "my-big-brother" / "daily"
                 env = dict(os.environ, XDG_CONFIG_HOME=str(base / "config"),
                            XDG_DATA_HOME=str(base / "data"),
                            LOCALAPPDATA=str(base / "local"), HOME=str(base), USERPROFILE=str(base))
                 # macOS Path.home() uses HOME, Windows uses USERPROFILE.
                 if sys.platform == "darwin":
                     app = base / "Library" / "Application Support" / "my-big-brother"
-                    logs, config_dir = app / "data" / "raw-logs", app / "configs"
+                    logs, config_dir = app / "data" / "daily", app / "configs"
                 elif sys.platform == "win32":
                     app = base / "local" / "my-big-brother"
-                    logs, config_dir = app / "data" / "raw-logs", app / "configs"
+                    logs, config_dir = app / "data" / "daily", app / "configs"
                 else:
                     config_dir = base / "config" / "my-big-brother"
-                if storage_v2:
-                    spec = importlib.util.spec_from_file_location('fixture_storage', ROOT / 'python/storage.py')
-                    contract = importlib.util.module_from_spec(spec)
-                    spec.loader.exec_module(contract)
-                    layout = contract.Layout.install(config_dir, logs.parent, 4)
-                    logs = layout.daily
-                if locator is not None:
-                    config_dir.mkdir(parents=True)
-                    value = str(base / "custom root 中文") if locator == "custom" else locator
-                    (config_dir / "raw-logs-path.txt").write_bytes(value.encode("utf-8") + b"\r\n")
-                    if locator == "custom":
-                        logs = Path(value)
+                spec = importlib.util.spec_from_file_location('fixture_storage', ROOT / 'python/storage.py')
+                contract = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(contract)
+                data = base / 'custom root 中文' if shared_root == 'custom' else logs.parent
+                layout = contract.Layout.install(config_dir, data, 4)
+                logs = layout.daily
+                if invalid_storage:
+                    (config_dir / 'storage.json').write_text('{broken')
                 if extra_env:
                     env.update(extra_env)
                 config_file = base / "init.vim"
@@ -115,7 +111,7 @@ class EditorTests(unittest.TestCase):
 
     def test_storage_v2_records_checkpoint_and_saved_changes(self):
         for result in self.run_editor(["call setline(1, 'changed')", "write"],
-                                      files=['first.txt'], storage_v2=True):
+                                      files=['first.txt']):
             self.assertEqual(len(result['records']), 1)
             record = result['records'][0]
             self.assertEqual(record['storage_version'], 2)
@@ -129,7 +125,7 @@ class EditorTests(unittest.TestCase):
             "call rename(daydir, fnamemodify(daydir, ':h:h') . '/removed-day')",
             "call setline(1, 'after removal')", "write",
         ]
-        for result in self.run_editor(actions, files=['first.txt'], storage_v2=True):
+        for result in self.run_editor(actions, files=['first.txt']):
             self.assertEqual(result['records'], [])
             self.assertNotIn('[vim-session-recorder]', result['messages'])
 
@@ -185,18 +181,18 @@ class EditorTests(unittest.TestCase):
         for result in self.run_editor(["edit skip.tmp", "call setline(1, 'skip')", "write"]):
             self.assertEqual(result["records"], [])
 
-    def test_shared_locator_and_json_text(self):
-        for result in self.run_editor([], files=["second.json"], locator="custom",
+    def test_shared_storage_and_json_text(self):
+        for result in self.run_editor([], files=["second.json"], shared_root="custom",
                                       extra_env={"PYTHONIOENCODING": "cp1252"}):
             item = result["records"][0]["opened_files"][0]
             self.assertEqual(item["snapshot_status"], "ok")
             self.assertFalse(item["modified"])
             self.assertNotIn("is_binary", item)
 
-    def test_bad_locator_disables_without_breaking_editor(self):
-        for result in self.run_editor(["edit second.json"], files=["first.txt"], locator="relative/path"):
+    def test_bad_storage_disables_without_breaking_editor(self):
+        for result in self.run_editor(["edit second.json"], files=["first.txt"], invalid_storage=True):
             self.assertEqual(result["records"], [])
-            self.assertIn("absolute path", result["messages"])
+            self.assertIn("[vim-session-recorder]", result["messages"])
             self.assertNotIn("E716", result["messages"])
 
 
