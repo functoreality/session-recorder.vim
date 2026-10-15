@@ -91,7 +91,7 @@ class RecorderTests(unittest.TestCase):
         ), (base / "configs", base / "data"))
 
     def test_default_and_explicit_roots_use_the_same_layout(self):
-        self.assertEqual(self.config()["root"], str(self.data_dir / "daily"))
+        self.assertEqual(self.config()["root"], str(self.data_dir / "raw-logs"))
         target = self.root / "记录 space"
         config, session, directory = self.session(record_dir=str(target))
         self.assertEqual(directory.parent, target / session['vim_start'][:10] / "vim")
@@ -118,7 +118,7 @@ class RecorderTests(unittest.TestCase):
     def test_storage_json_is_ignored_and_bad_locator_is_reported(self):
         self.config_dir.mkdir()
         (self.config_dir / "storage.json").write_text("{broken")
-        self.assertEqual(self.config()["root"], str(self.data_dir / "daily"))
+        self.assertEqual(self.config()["root"], str(self.data_dir / "raw-logs"))
         self.assertFalse(self.data_dir.exists())
         locator = self.config_dir / "raw-logs-path.txt"
         for value in (b"", b"relative", b"/path\n/second", b"/path\n\n"):
@@ -136,7 +136,7 @@ class RecorderTests(unittest.TestCase):
         second_dir = Path(second["directory"])
         self.assertNotEqual(first["session_id"], second["session_id"])
         self.assertNotEqual(first_dir, second_dir)
-        self.assertEqual(first_dir.parent, self.data_dir / "daily" / "2026-10-14" / "vim")
+        self.assertEqual(first_dir.parent, self.data_dir / "raw-logs" / "2026-10-14" / "vim")
         self.assertTrue(first_dir.is_dir())
         self.assertTrue(second_dir.is_dir())
         self.assertNotIn(":", first_dir.name)

@@ -44,7 +44,7 @@ Windows 的 `py -3` 顺序查找，并使用找到的第一个解释器。
 1. Vim 配置中的绝对路径 `record_dir`。
 2. `C/raw-logs-path.txt` 中的绝对路径。
    文件使用 UTF-8，只存一条路径，可带一个 LF 或 CRLF 行尾。
-3. 平台默认数据目录下的 `daily`。
+3. 平台默认数据目录下的 `raw-logs`。
 
 `C` 是平台配置目录：
 
@@ -71,7 +71,7 @@ WSL 和远程编辑器使用各自系统、账户和文件系统的位置。
 目录名带启动时具名缓冲区的文件名，便于浏览：
 
 ```text
-daily/YYYY-MM-DD/vim/HH-MM-SS_工作笔记.md_<short-id>/
+raw-logs/YYYY-MM-DD/vim/HH-MM-SS_工作笔记.md_<short-id>/
 ```
 
 保留 Unicode 字符，将 Windows 不允许的字符替换为 `_`。
@@ -137,7 +137,7 @@ Diff 比较首次记录时和退出时磁盘上的文件内容。放弃的 buffe
 ## My Big Brother
 
 本仓库独立提供编辑器采集器，My Big Brother 已包含对应来源适配器。
-如需使用自定义根目录，将其 `daily` 的绝对路径写入 `C/raw-logs-path.txt`，
+如需使用自定义根目录，将其 `raw-logs` 的绝对路径写入 `C/raw-logs-path.txt`，
 或设置 `record_dir`。读取器使用同一根目录，其中应包含 `YYYY-MM-DD/vim/`。
 验证一次合成会话后，明确启用其 `vim` 来源。共享目录本身不代表授权分析。
 接入规则见[读取契约](../RECORD-FORMAT.md)。

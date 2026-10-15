@@ -48,7 +48,7 @@ The recording root is selected once at startup, in this order:
 1. An absolute `record_dir` in the Vim plugin configuration.
 2. An absolute path in `C/raw-logs-path.txt`, a UTF-8 file containing only that
    path with an optional LF or CRLF ending.
-3. The platform data directory below, followed by `daily`.
+3. The platform data directory below, followed by `raw-logs`.
 
 `C` is the platform configuration directory:
 
@@ -77,7 +77,7 @@ diffs published at exit. Directory names include the initial buffer's
 basename for browsing, for example:
 
 ```text
-daily/YYYY-MM-DD/vim/HH-MM-SS_notes.md_<short-id>/
+raw-logs/YYYY-MM-DD/vim/HH-MM-SS_notes.md_<short-id>/
 ```
 
 Unicode names are retained. Windows-invalid characters become `_`. Stems
@@ -149,7 +149,7 @@ write failure appears in editor messages and leaves diagnostic artifacts.
 ## My Big Brother
 
 This independently installed collector supplies the editor records. My Big
-Brother includes their source adapter. To share a custom daily root, put its
+Brother includes their source adapter. To share a custom raw-log root, put its
 absolute path in `C/raw-logs-path.txt` or set `record_dir`. The adapter uses
 that same root, containing `YYYY-MM-DD/vim/` directories. Enable `vim` explicitly
 after checking a synthetic session. Sharing a directory does not itself

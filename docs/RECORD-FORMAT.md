@@ -22,7 +22,7 @@ report that assumption. Existing offset-bearing ISO records remain historical
 input that a reader may support.
 
 All configured recording roots use
-`daily/YYYY-MM-DD/vim/HH-MM-SS_<first-file>_<short-id>/`.
+`raw-logs/YYYY-MM-DD/vim/HH-MM-SS_<first-file>_<short-id>/`.
 `first-file` is a browsing hint from the initial named buffer. Unicode is
 preserved and Windows-invalid characters become `_`. Stems longer than
 20 characters keep the first 18 characters, `..` and the extension.
@@ -110,7 +110,7 @@ A crash can leave originals without a final record. Temporary `record-*.tmp`
 files are not completed records. There is no separate daemon.
 
 The root is resolved once at startup: explicit `record_dir`, then the UTF-8
-single-path `C/raw-logs-path.txt`, then the platform data directory's `daily`.
+single-path `C/raw-logs-path.txt`, then the platform data directory's `raw-logs`.
 The locator is not reread during the session. There is no storage registry,
 `storage.json` dependency, managed/standalone mode, or directory migration.
 If the existing session folder is removed, final publication fails without

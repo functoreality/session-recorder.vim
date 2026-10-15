@@ -58,7 +58,7 @@ def configure(config):
             value = value[:-1]
         root, origin = absolute(value), str(locator)
     else:
-        root, origin = data_dir / "daily", "platform default"
+        root, origin = data_dir / "raw-logs", "platform default"
     size = config.get("max_file_size", 1048576)
     if type(size) is not int or size <= 0:
         raise ValueError("max_file_size must be a positive integer")

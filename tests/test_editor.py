@@ -53,17 +53,17 @@ class EditorTests(unittest.TestCase):
                 (work / "second.json").write_bytes(b'{"original": true}' + line_ending)
                 for name, contents in (fixtures or {}).items():
                     (work / name).write_bytes(contents)
-                logs = base / "data" / "my-big-brother" / "daily"
+                logs = base / "data" / "my-big-brother" / "raw-logs"
                 env = dict(os.environ, XDG_CONFIG_HOME=str(base / "config"),
                            XDG_DATA_HOME=str(base / "data"),
                            LOCALAPPDATA=str(base / "local"), HOME=str(base), USERPROFILE=str(base))
                 # macOS Path.home() uses HOME, Windows uses USERPROFILE.
                 if sys.platform == "darwin":
                     app = base / "Library" / "Application Support" / "my-big-brother"
-                    logs, config_dir = app / "data" / "daily", app / "configs"
+                    logs, config_dir = app / "data" / "raw-logs", app / "configs"
                 elif sys.platform == "win32":
                     app = base / "local" / "my-big-brother"
-                    logs, config_dir = app / "data" / "daily", app / "configs"
+                    logs, config_dir = app / "data" / "raw-logs", app / "configs"
                 else:
                     config_dir = base / "config" / "my-big-brother"
                 if use_locator:
