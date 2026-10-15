@@ -39,10 +39,14 @@ Windows 的 `py -3` 顺序查找，并使用找到的第一个解释器。
 
 ## 存储位置
 
-先通过 My Big Brother 初始化共享存储。插件读取 `C/storage.json`，写入
-`<data_root>/daily/<逻辑工作日>/vim/<分段>/`，共用固定日界线和持久化日期登记。
-无需设置额外的 Vim 路径变量。共享配置缺失或无效时停止采集并报告错误，
-不会选择其他目录。不要只手工创建 JSON 文件而不建立配套登记。
+插件无需安装 My Big Brother 或准备配置文件，即可独立运行。
+它写入 `<data_root>/daily/<自然日期>/vim/<分段>/`，日期取本机系统日期，
+等价于 `date +%F`，不读取或应用复盘工作日分界。
+
+`data_root` 默认采用平台上 `my-big-brother` 的数据位置。
+可选 `C/storage.json` 通过 `schema_version: 2` 和绝对路径 `data_root` 选择其他数据根。
+日期登记状态自动建立，不创建用户配置文件。
+已有配置格式错误或日期登记损坏时报告错误，不静默重建状态。
 
 `C` 是平台配置目录：
 
@@ -56,8 +60,13 @@ Linux XDG 变量为空或为相对路径时使用默认值。
 Windows 的 `LOCALAPPDATA` 为空时采用 `~/AppData/Local`。
 WSL、远程编辑器使用所在系统、用户和文件系统中的位置。
 
+默认数据根在 Linux 为 `$XDG_DATA_HOME/my-big-brother`，
+未设置时为 `~/.local/share/my-big-brother`。
+macOS 为 `~/Library/Application Support/my-big-brother/data`，
+Windows 为 `%LOCALAPPDATA%/my-big-brother/data`。
+
 共享模式在编辑器事件发生时以及每 30 秒保存检查点。
-新工作日创建有独立原始快照的新分段，不依赖之前日期的目录。
+新自然日期创建有独立原始快照的新分段，不依赖之前日期的目录。
 跨日观察存在空缺时会明确报告。删除已无活动写入的旧日期表示放弃，
 插件不会重建它，也不会把当天事件转写到其他目录。
 
@@ -75,7 +84,7 @@ daily/YYYY-MM-DD/vim/HH-MM-SS_工作笔记.md_<session_id>/
 编写读取器前请读[格式契约](../RECORD-FORMAT.md)。
 
 如需脱离 My Big Brother 单独使用，在加载插件前显式设置绝对路径 `record_dir`。
-独立模式写入 `<record_dir>/<session>/`，退出时完成记录，
+独立模式写入 `<record_dir>/YYYY-MM-DD/<session>/`，退出时完成记录，
 不使用共享日期登记、定期检查点和按日清理机制。
 
 ## 配置与验证
@@ -98,7 +107,7 @@ let g:vim_session_recorder#config = {
 - `helper_timeout_ms`：单次 Python 调用的最长时间，包含退出时整批文件的比较。
   文件很多或磁盘较慢时可调高。超时会报告采集失败，可能留下原始副本，
   却没有最终 `record.json`。
-- `record_dir`：可选的独立输出绝对路径，使用 `<record_dir>/<session>/` 布局。
+- `record_dir`：可选的独立输出绝对路径，使用 `<record_dir>/YYYY-MM-DD/<session>/` 布局。
   接入 My Big Brother 的共享存储时应省略。
 
 运行 `:RecorderStatus` 查看实际根目录、共享配置文件、覆盖来源、当前会话目录和最近错误。

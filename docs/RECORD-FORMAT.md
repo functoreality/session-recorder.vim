@@ -27,7 +27,8 @@ and periods are trimmed. A missing hint or a name/path-length error falls
 back to `HH-MM-SS_<session_id>`. Other creation errors are reported normally.
 The timestamp prefix also keeps Windows device names from becoming reserved
 directory names. Session directories are created exclusively.
-Standalone `record_dir` skips the date/source levels.
+Standalone `record_dir` uses `<record_dir>/YYYY-MM-DD/<session>/`.
+Its date is the real local session-start date.
 File IDs are positive integers unique inside the session.
 
 The directory name is a browsing aid, not a machine-readable source of paths.
@@ -93,10 +94,11 @@ uncertainty rather than assign the entire diff to a precise instant.
 
 ## Storage v2 day checkpoints
 
-When `C/storage.json` selects storage version 2, the version 1 record envelope
+Default dated recording uses the version 2 layout, with or without an optional
+`C/storage.json`. The version 1 record envelope
 has these additional fields:
 
-- `storage_version: 2` and `logical_day`: the shared storage calendar.
+- `storage_version: 2` and `calendar_date`: the actual local system date.
 - `root_session_id`: continuity between independently identified day segments.
 - `segment_open`: true for a live checkpoint, false after finalization.
 - `boundary_gap`: an explicit limitation when rollover was observed late.
@@ -135,5 +137,5 @@ My Big Brother provides a separate Vim source adapter. Its contract is to:
 5. Test synthetic shared-root records, time offsets, midnight sessions,
    unsupported versions, missing originals, and disabled source behavior.
 
-Storage v2 readers select the logical-day segment directory and interpret
+Readers select natural-date directories intersecting the review window and interpret
 checkpoint endpoints and boundary gaps. Standalone readers discover session manifests recursively. Keep the editor collector independently installable.
