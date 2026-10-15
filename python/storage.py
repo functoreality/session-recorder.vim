@@ -128,7 +128,7 @@ class Layout:
         path = Path(config_dir) / "storage.json"
         if not path.exists():
             if required:
-                raise ValueError("Storage v2 is not initialized. Run init or migrate-storage.")
+                raise ValueError("Storage v2 is not initialized. Run init.")
             return None
         result = cls(read_json(path))
         result.check()
@@ -141,12 +141,18 @@ class Layout:
         if path.exists():
             result = cls.load(config_dir)
             if result.settings != settings:
-                raise ValueError("Existing storage preserved. Changing its root or calendar needs migration.")
+                raise ValueError("Existing storage preserved. Changing its root or calendar in place is unsupported.")
             return result
         result = cls(settings)
         marker = result.system / "storage.json"
-        if marker.exists() and read_json(marker) != settings:
-            raise ValueError("Existing data has a different storage calendar")
+        if marker.exists():
+            if read_json(marker) != settings:
+                raise ValueError("Existing data has a different storage calendar")
+            result.check()
+            write_json(path, settings)
+            return result
+        if result.system.exists() and any(result.system.iterdir()):
+            raise ValueError("Existing persistent storage has no calendar marker. Do not reset it.")
         for directory in (result.daily, result.system / "days", result.system / "locks"):
             directory.mkdir(parents=True, exist_ok=True, mode=0o700)
         write_json(marker, settings)
