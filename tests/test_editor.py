@@ -152,7 +152,7 @@ class EditorTests(unittest.TestCase):
                     self.assertEqual(item["last_focus_line"]["contents"], "after 中文")
                     self.assertEqual(result["artifacts"][0][item["original_file"]], b"before" + ending)
                     self.assertRegex(result["paths"][0], r"^\d{4}-\d{2}-\d{2}/vim/[^/]+/record.json$")
-                    self.assertRegex(result["paths"][0], r"/\d{2}-\d{2}-\d{2}_first\.txt_[0-9a-f]{32}/record.json$")
+                    self.assertRegex(result["paths"][0], r"/\d{2}-\d{2}-\d{2}_first\.txt_[0-9a-f]{8}/record.json$")
 
     def test_unicode_first_file_labels_session_directory(self):
         actions = ["edit 工作笔记.md", "call setline(1, 'created')", "write", "edit first.txt"]

@@ -89,7 +89,14 @@ def excluded(path, config):
 def file_label(filename):
     """Keep a readable, bounded basename hint that is safe on all three systems."""
     label = re.sub(r'[<>:"/\\|?*\x00-\x1f\x7f]', "_", filename).strip(" .")
-    return label.encode("utf-8")[:64].decode("utf-8", errors="ignore").rstrip(" .")
+    stem, extension = os.path.splitext(label)
+    if len(stem) > 20:
+        label = stem[:18] + ".." + (extension or stem[-8:])
+    encoded = label.encode("utf-8")
+    if len(encoded) > 64:
+        label = (encoded[:30].decode("utf-8", errors="ignore") + ".."
+                 + encoded[-32:].decode("utf-8", errors="ignore"))
+    return label.rstrip(" .")
 
 
 def start(config, first_file=""):
@@ -105,17 +112,21 @@ def start(config, first_file=""):
     parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     clock = timestamp[11:19].replace(":", "-")
     label = file_label(Path(first_file).name) if first_file else ""
-    compact = clock + "_" + session_id
-    directory = parent / (clock + "_" + label + "_" + session_id if label else compact)
-    try:
-        directory.mkdir(mode=0o700)
-    except OSError as exc:
-        # A custom root can leave too little room for the optional hint.
-        if not label or (exc.errno != errno.ENAMETOOLONG
-                         and getattr(exc, "winerror", None) not in (123, 206)):
-            raise
-        directory = parent / compact
-        directory.mkdir(mode=0o700)
+    while True:
+        short_id = session_id[:8]
+        name = clock + "_" + (label + "_" if label else "") + short_id
+        directory = parent / name
+        try:
+            directory.mkdir(mode=0o700)
+            break
+        except FileExistsError:
+            session_id = uuid4().hex
+        except OSError as exc:
+            # A custom root can leave too little room for the optional hint.
+            if not label or (exc.errno != errno.ENAMETOOLONG
+                             and getattr(exc, "winerror", None) not in (123, 206)):
+                raise
+            label = ""
     session = {"session_id": session_id, "vim_start": timestamp, "directory": str(directory)}
     if layout is not None:
         session.update(calendar_date=day, workspace_id=layout.record(day)["workspace_id"],

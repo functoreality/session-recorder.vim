@@ -83,7 +83,7 @@ class RecorderTests(unittest.TestCase):
         config, session, directory = self.session(record_dir=str(target))
         self.assertTrue(config["standalone"])
         self.assertEqual(directory.parent, target / session['vim_start'][:10])
-        self.assertEqual(session["session_id"], directory.name.rsplit("_", 1)[-1])
+        self.assertEqual(session["session_id"][:8], directory.name.rsplit("_", 1)[-1])
 
     def test_shared_storage_preserves_unicode_and_spaces(self):
         target = self.root / "记录 space"
@@ -124,13 +124,33 @@ class RecorderTests(unittest.TestCase):
                  ("记录.md", "记录.md"), ("résumé.md", "résumé.md"),
                  ("report📄.txt", "report📄.txt"),
                  ('notes:a?b*.txt', "notes_a_b_.txt"),
-                 ("CON.txt", "CON.txt")]
+                 ("CON.txt", "CON.txt"),
+                 ("abcdefghijklmnopqrstuvwxyz.md", "abcdefghijklmnopqr...md"),
+                 ("abcdefghijklmnopqrstuvwxyz", "abcdefghijklmnopqr..stuvwxyz"),
+                 (".gitignore", "gitignore")]
         for filename, expected in cases:
             with self.subTest(filename=filename):
                 session = recorder.start(config, str(self.root / filename))
                 directory = Path(session["directory"])
                 self.assertTrue(directory.is_dir())
-                self.assertTrue(directory.name.endswith("_" + expected + "_" + session["session_id"]))
+                self.assertTrue(directory.name.endswith("_" + expected + "_" + session["session_id"][:8]))
+
+    def test_short_id_collision_retries_without_overwriting(self):
+        config = self.config()
+        for filename in ("", "notes.md"):
+            with self.subTest(filename=filename):
+                ids = ["a" * 32, "a" * 8 + "b" * 24, "c" * 32]
+                with mock.patch.object(recorder, "now", return_value="2026-10-14T23:59:59+08:00"), \
+                     mock.patch.object(recorder, "uuid4", side_effect=[mock.Mock(hex=value) for value in ids]):
+                    first = recorder.start(config, filename)
+                    original = Path(first["directory"]) / "original.txt"
+                    original.write_bytes(b"keep this snapshot")
+                    second = recorder.start(config, filename)
+                self.assertEqual(first["session_id"], ids[0])
+                self.assertEqual(second["session_id"], ids[2])
+                self.assertTrue(Path(second["directory"]).name.endswith("_cccccccc"))
+                self.assertNotEqual(first["directory"], second["directory"])
+                self.assertEqual(original.read_bytes(), b"keep this snapshot")
 
     def test_long_unicode_hint_is_bounded_and_empty_hint_can_be_omitted(self):
         config = self.config()
@@ -138,9 +158,15 @@ class RecorderTests(unittest.TestCase):
         name = Path(session["directory"]).name
         label = name[9:].rsplit("_", 1)[0]
         self.assertTrue(label.startswith("文"))
+        self.assertTrue(label.endswith(".md"))
+        self.assertIn("..", label)
+        self.assertLessEqual(len(label.encode("utf-8")), 64)
+        label = recorder.file_label("首" * 30 + "." + "尾" * 30)
+        self.assertTrue(label.startswith("首"))
+        self.assertTrue(label.endswith("尾"))
         self.assertLessEqual(len(label.encode("utf-8")), 64)
         session = recorder.start(config, str(self.root / " . "))
-        self.assertRegex(Path(session["directory"]).name, r"^\d{2}-\d{2}-\d{2}_[0-9a-f]{32}$")
+        self.assertRegex(Path(session["directory"]).name, r"^\d{2}-\d{2}-\d{2}_[0-9a-f]{8}$")
 
     def test_long_path_falls_back_without_hiding_permission_errors(self):
         config = self.config()
@@ -153,7 +179,7 @@ class RecorderTests(unittest.TestCase):
 
         with mock.patch.object(Path, "mkdir", new=create):
             session = recorder.start(config, str(self.root / "notes.md"))
-        self.assertRegex(Path(session["directory"]).name, r"^\d{2}-\d{2}-\d{2}_[0-9a-f]{32}$")
+        self.assertRegex(Path(session["directory"]).name, r"^\d{2}-\d{2}-\d{2}_[0-9a-f]{8}$")
         def denied(path, *args, **kwargs):
             if "_notes.md_" in path.name:
                 raise PermissionError(errno.EACCES, "Denied")

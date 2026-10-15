@@ -80,14 +80,18 @@ checkpoints and modification diffs. Directory names include the first file's
 basename for browsing, for example:
 
 ```text
-daily/YYYY-MM-DD/vim/HH-MM-SS_notes.md_<session_id>/
+daily/YYYY-MM-DD/vim/HH-MM-SS_notes.md_<short-id>/
 ```
 
-Unicode names are retained. Windows-invalid characters become `_`. The hint
-is limited to 64 UTF-8 bytes without cutting a character. A missing hint or
-path-length restriction uses `HH-MM-SS_<session_id>`. The full random ID
-prevents collisions. Read full paths and artifact names from `record.json`,
-not the directory name. See the [record format](docs/RECORD-FORMAT.md).
+Unicode names are retained. Windows-invalid characters become `_`. Stems
+over 20 characters keep the first 18, `..` and the extension (or the last
+8 characters without an extension). The hint is limited to 64 UTF-8 bytes,
+keeping both ends without cutting a character. `<short-id>` is the first
+8 hex characters of the full random session ID stored in `record.json`.
+An existing directory triggers a new ID, so collisions never overwrite records.
+A missing hint or path-length restriction uses `HH-MM-SS_<short-id>`.
+Read full paths and artifact names from `record.json`, not the directory
+name. See the [record format](docs/RECORD-FORMAT.md).
 
 To use this plugin independently of My Big Brother, explicitly configure an
 absolute `record_dir` before loading it. Standalone recording writes

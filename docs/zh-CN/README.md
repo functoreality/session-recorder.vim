@@ -74,13 +74,17 @@ Windows 为 `%LOCALAPPDATA%/my-big-brother/data`。
 目录名带首个记录文件的文件名，便于浏览：
 
 ```text
-daily/YYYY-MM-DD/vim/HH-MM-SS_工作笔记.md_<session_id>/
+daily/YYYY-MM-DD/vim/HH-MM-SS_工作笔记.md_<short-id>/
 ```
 
 保留 Unicode 字符，将 Windows 不允许的字符替换为 `_`。
-文件名片段最多 64 个 UTF-8 字节，不截断字符。
-没有片段或遇到路径长度限制时，使用 `HH-MM-SS_<session_id>`。
-完整随机标识用于防止碰撞。完整路径及快照文件名以 `record.json` 为准。
+主文件名超过 20 个字符时，保留前 18 个字符、`..` 和扩展名，
+没有扩展名则保留末尾 8 个字符。
+文件名片段最多 64 个 UTF-8 字节，超出时保留两端，不截断字符。
+`<short-id>` 使用随机会话标识的前 8 位十六进制字符，完整标识仍保存在 `record.json`。
+若目录已存在，则重新生成标识，不覆盖已有记录。
+没有片段或遇到路径长度限制时，使用 `HH-MM-SS_<short-id>`。
+完整路径及快照文件名以 `record.json` 为准。
 编写读取器前请读[格式契约](../RECORD-FORMAT.md)。
 
 如需脱离 My Big Brother 单独使用，在加载插件前显式设置绝对路径 `record_dir`。

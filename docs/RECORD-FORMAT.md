@@ -19,14 +19,19 @@ Required top-level fields:
 | `opened_files` | Ordered array of file records |
 
 Shared storage uses
-`daily/YYYY-MM-DD/vim/HH-MM-SS_<first-file>_<session_id>/`.
+`daily/YYYY-MM-DD/vim/HH-MM-SS_<first-file>_<short-id>/`.
 `first-file` is a readable hint from the first recorded basename. Unicode is
-preserved, Windows-invalid characters become `_`, and the hint is truncated
-at a UTF-8 character boundary to at most 64 bytes. Leading/trailing spaces
-and periods are trimmed. A missing hint or a name/path-length error falls
-back to `HH-MM-SS_<session_id>`. Other creation errors are reported normally.
+preserved and Windows-invalid characters become `_`. Stems longer than
+20 characters keep the first 18 characters, `..` and the extension.
+Without an extension, the last 8 stem characters replace the extension.
+Hints exceeding 64 UTF-8 bytes keep both ends within that limit without
+cutting a character. Leading/trailing spaces and periods are trimmed.
+`short-id` is the first 8 hex characters of `session_id`. JSON retains the
+full 32-character identifier. A missing hint or a name/path-length error
+falls back to `HH-MM-SS_<short-id>`. Other creation errors are reported normally.
 The timestamp prefix also keeps Windows device names from becoming reserved
-directory names. Session directories are created exclusively.
+directory names. Session directories are created exclusively. If a directory
+already exists, a new session ID is generated and creation is retried.
 Standalone `record_dir` uses `<record_dir>/YYYY-MM-DD/<session>/`.
 Its date is the real local session-start date.
 File IDs are positive integers unique inside the session.
