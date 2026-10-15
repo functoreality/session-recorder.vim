@@ -43,7 +43,22 @@ loading can load it after `VimEnter`.
 
 ## Storage
 
-Without configuration, records go to `D/raw-logs/YYYY-MM-DD/vim/<session>/`.
+When My Big Brother initializes `C/storage.json` version 2, the plugin uses
+`<data_root>/daily/<logical-day>/vim/<segment>/`. It shares the configured
+day boundary and durable day registry. No Vim path variable is needed.
+An explicitly configured `record_dir` keeps standalone behavior.
+
+In v2 mode, checkpoints are written on editor events and every 30 seconds.
+A new logical day starts an independent segment with new original snapshots.
+Later segments do not depend on earlier directories. If rollover is observed
+late, the unobserved interval is reported rather than assigned to a day.
+Deleting an inactive old day means abandoning it. The plugin does not
+recreate that directory or silently fall back to another root.
+Initialize or migrate storage through My Big Brother, then restart editors.
+Do not create only `storage.json` without the accompanying durable registry.
+
+Without the v2 contract, the legacy default is
+`D/raw-logs/YYYY-MM-DD/vim/<session>/`.
 `C` is the configuration directory and `D` is the default data directory:
 
 | System | C | D |
@@ -69,7 +84,7 @@ invalid file disables this editor's recording and reports the error. A missing
 file uses the platform default. The plugin reads this file once per editor
 process and never reads My Big Brother's `config.json` or `results_root`.
 
-Each session directory contains `record.json`, small UTF-8 original files,
+In legacy mode, each session directory contains `record.json`, small UTF-8 original files,
 and unified diffs for changed files. Dates represent the first recorded file's
 local natural date. A session spanning midnight stays in that directory.
 Session names include the first recorded file's basename for manual browsing:

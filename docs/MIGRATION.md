@@ -7,6 +7,14 @@ not mix old and new functions.
 
 ## Select the destination
 
+My Big Brother storage v2 takes priority over the older raw-log pointer.
+Initialize or explicitly migrate the main application, update this plugin,
+then restart editors. Existing editor processes can retain old session paths.
+Do not move an active session's originals away before it closes.
+Explicit `record_dir` continues to opt out of shared discovery.
+The v2 plugin uses independent logical-day segments and a shared deletion
+registry. A malformed v2 configuration is an error, not a legacy fallback.
+
 - With no `record_dir`, the plugin reads `C/raw-logs-path.txt`, or uses
   `D/raw-logs`. New sessions use the date/source/session layout.
 - With an existing explicit `record_dir`, the plugin continues using that

@@ -81,7 +81,7 @@ Originals are captured at file-open/new-file or first write-path detection.
 Diffs compare on-disk files at editor exit, and `record.json` is replaced
 atomically only after comparisons. A missing final record means an unfinished
 session or a failed write. Temporary `record-*.tmp` files are not input records.
-No periodic checkpoint or background process is provided.
+This describes legacy/standalone mode. There is no separate daemon.
 
 A session spanning midnight stays under its **start date**. Records are session
 aggregates, not individual save events. A reader must discover sessions
@@ -90,13 +90,41 @@ Scanning only a review window's date directories can miss older long sessions.
 Even recursive discovery cannot divide an aggregate diff accurately between
 review days or reveal still-running sessions. The review must describe that
 uncertainty rather than assign the entire diff to a precise instant.
-A later daily-rotation/event design should have its own versioned contract.
+
+## Storage v2 day checkpoints
+
+When `C/storage.json` selects storage version 2, the version 1 record envelope
+has these additional fields:
+
+- `storage_version: 2` and `logical_day`: the shared storage calendar.
+- `root_session_id`: continuity between independently identified day segments.
+- `segment_open`: true for a live checkpoint, false after finalization.
+- `boundary_gap`: an explicit limitation when rollover was observed late.
+- Continued files have `continued: true` and `original_opened`. Their `opened`
+  time describes establishing the new baseline, not a new human file opening.
+
+Snapshots and comparisons are refreshed on read/write/focus events and a
+30-second editor timer. `vim_close` is the checkpoint's observed endpoint,
+not proof the editor exited. No individual edit timestamps are invented.
+At rollover, the previous segment stops at its last observed checkpoint.
+The following segment captures fresh originals, without reading old snapshots.
+Deleting an earlier day cannot break later segment interpretation.
+Changes in an unobserved boundary interval are explicitly unattributed.
+When the previous checkpoint still exists, a self-contained `boundary_diff_file`
+retains its observed difference from the new baseline. It is cross-boundary
+context, not evidence that all changes happened in the new day. A missing old
+checkpoint does not prevent creating the new segment.
+Diffs still compare disk bytes. Unsaved buffer content is not a saved edit.
+
+The shared date registry is consulted before writes. A removed day is not
+recreated. A deliberately configured standalone `record_dir` opts out of this
+managed lifecycle and retains legacy session behavior.
 
 ## My Big Brother integration
 
-The public project currently has no Vim source adapter. To add it:
+My Big Brother provides a separate Vim source adapter. Its contract is to:
 
-1. Register an enabled/disabled `vim` source using the shared raw-log root,
+1. Register an enabled/disabled `vim` source using the shared capture root,
    without reading other source directories as editor evidence.
 2. Add a reader for version 1, optionally supporting unversioned legacy JSON.
    Discover cross-date sessions and report format/read/comparison gaps.
@@ -107,6 +135,6 @@ The public project currently has no Vim source adapter. To add it:
 5. Test synthetic shared-root records, time offsets, midnight sessions,
    unsupported versions, missing originals, and disabled source behavior.
 
-The earlier materializer recursively discovers `record.json` and can parse
-ISO timestamps. That compatibility does not supply a public reader or preserve
-all version 1 fields. Keep the editor collector independently installable.
+Storage v2 readers select the logical-day segment directory and interpret
+checkpoint endpoints and boundary gaps. Legacy readers still need recursive
+cross-date discovery. Keep the editor collector independently installable.

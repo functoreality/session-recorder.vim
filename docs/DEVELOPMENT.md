@@ -84,9 +84,10 @@ in the tests. The corrected Windows tests still need a CI rerun.
 
 - Choose a repository license and confirm rights to the existing source.
 - Complete native platform checks and review the supported host versions.
-- Integrate a versioned source adapter separately in My Big Brother.
-- Decide whether daily event/rotation support is needed for long sessions.
-  That changes recording semantics and is not implied by portable storage.
+- Keep the My Big Brother source adapter compatible with checkpoint fields.
+- Exercise storage v2 day rollover and deletion tests on every supported host.
+  The protocol implementation in `python/storage.py` is a vendored copy of
+  My Big Brother's standard-library `my_big_brother/storage.py`.
 
 For maintenance, update both reader-facing README languages when behavior
 changes. Keep structured schemas and developer contracts canonical in English.
