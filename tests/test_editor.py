@@ -112,6 +112,9 @@ class EditorTests(unittest.TestCase):
                 completed = subprocess.run(args, cwd=work, env=env, capture_output=True, timeout=45)
                 self.assertEqual(completed.returncode, 0, completed.stderr.decode("utf-8", "replace"))
                 records = [(p, json.loads(p.read_text(encoding="utf-8"))) for p in logs.rglob("record.json")]
+                for _, payload in records:
+                    for item in payload["opened_files"]:
+                        self.assertNotIn("error", item, json.dumps(item, ensure_ascii=False))
                 # Copy evidence out before TemporaryDirectory closes.
                 results.append({"records": [payload for _, payload in records],
                                 "configuration_created": (config_dir / 'storage.json').exists(),

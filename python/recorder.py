@@ -176,9 +176,13 @@ def system_diff(original_path, current_path):
         return None
     arguments = [executable, "-u"]
     arguments.extend([str(original_path), str(current_path)])
-    result = subprocess.run(arguments, capture_output=True)
+    try:
+        result = subprocess.run(arguments, capture_output=True)
+    except OSError:
+        return None
     if result.returncode not in (0, 1):
-        raise OSError(result.stderr.decode("utf-8", errors="replace").strip() or "diff failed")
+        # An installed diff may not support these paths or options.
+        return None
     return (result.stdout,) + diff_counts(result.stdout)
 
 

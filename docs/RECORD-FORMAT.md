@@ -76,8 +76,9 @@ are local basenames. Readers must validate them before reading sibling files.
 
 Where available, the collector uses system `diff -u` through an argument list,
 retaining its actual snapshot/current paths and timestamp headers.
-Otherwise it uses a standard-library unified diff without the repeated-line
-`autojunk` heuristic. Both split lines at LF, preserving CR as content.
+If the executable is missing or fails, it uses a standard-library unified diff
+without the repeated-line `autojunk` heuristic. Both split lines at LF,
+preserving CR as content.
 Alignment can differ between implementations. Counts describe that alignment,
 not effort or execution success. System diff can produce a binary-difference
 summary, including for UTF-16 files. Such a summary has no textual line counts

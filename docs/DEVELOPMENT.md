@@ -35,7 +35,8 @@ The final JSON is replaced atomically within the session directory.
 These choices do not make the entire artifact set transactional or recover
 an interrupted comparison. Calls wait for completion unless the user configures
 `helper_timeout_ms`. System `diff -u` is used where available, with a portable
-standard-library fallback. The fallback can align changes differently.
+standard-library fallback when the executable is missing or fails.
+The fallback can align changes differently.
 
 ## Tests
 

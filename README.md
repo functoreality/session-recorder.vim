@@ -156,9 +156,9 @@ after checking a synthetic session. Sharing a directory does not itself
 authorize analysis. See the [reader contract](docs/RECORD-FORMAT.md).
 
 When available, system `diff -u` retains its native comparison algorithm.
-Otherwise the Python standard library supplies the diff without another
-required dependency. After startup, opening files, switching buffers and saving do not run Python
-or regenerate diffs.
+If the executable is missing or fails, the Python standard library supplies
+the diff without another required dependency. After startup, opening files,
+switching buffers and saving do not run Python or regenerate diffs.
 
 Current implementation and tests are described in [Development](docs/DEVELOPMENT.md).
 Earlier personal requirements and proposals are preserved in

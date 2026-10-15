@@ -341,6 +341,33 @@ class RecorderTests(unittest.TestCase):
         self.assertIn(str(source).encode(), lines[1])
         self.assertIn(b"\t", lines[0])
 
+    def test_failed_system_diff_falls_back_for_changed_and_unchanged_files(self):
+        failures = [subprocess.CompletedProcess([], 2, b"", b"Cannot open Unicode path"),
+                    OSError("Cannot launch diff")]
+        for failure in failures:
+            for current in (b"before\n", b"after\n"):
+                with self.subTest(failure=failure, current=current):
+                    config, session, directory = self.session()
+                    source = self.root / "中文 notes.txt"
+                    source.write_bytes(b"before\n")
+                    record = self.record_fixture(source, directory)
+                    source.write_bytes(current)
+                    outcome = ({"side_effect": failure} if isinstance(failure, OSError)
+                               else {"return_value": failure})
+                    with mock.patch.object(recorder.shutil, "which", return_value="diff.exe"), \
+                         mock.patch.object(recorder.subprocess, "run", **outcome):
+                        summary = recorder.finalize(session, [record])
+                    self.assertEqual(summary["errors"], 0, record)
+                    self.assertTrue(record["diff_generated"])
+                    self.assertEqual(record["modified"], current != b"before\n")
+                    payload = json.loads(Path(summary["record"]).read_text(encoding="utf-8"))
+                    self.assertEqual(payload["opened_files"], [record])
+                    if record["modified"]:
+                        self.assertEqual((record["lines_added"], record["lines_deleted"]), (1, 1))
+                        self.assertIn(b"+after\n", (directory / record["diff_file"]).read_bytes())
+                    else:
+                        self.assertNotIn("diff_file", record)
+
     def test_one_failed_file_does_not_block_other_files_or_json(self):
         config, session, directory = self.session()
         records = []
